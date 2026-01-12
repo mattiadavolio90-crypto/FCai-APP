@@ -938,13 +938,13 @@ if tab1:
                             try:
                                 brevo_api_key = st.secrets["brevo"]["api_key"]
                                 sender_email = st.secrets["brevo"]["sender_email"]
-                                app_url = st.secrets.get("app", {}).get("url", "https://checkfornitori.streamlit.app")
+                                app_url = st.secrets.get("app", {}).get("url", "https://analisifatture-ai.streamlit.app")
                                 
                                 url_brevo = "https://api.brevo.com/v3/smtp/email"
                                 
                                 email_html = f"""
                                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                                    <h2 style="color: #0ea5e9;">🧠 Benvenuto in Check Fornitori AI</h2>
+                                    <h2 style="color: #0ea5e9;">📧 Benvenuto in Analisi Fatture AI</h2>
                                     <p>Il tuo account è stato creato con successo!</p>
                                     
                                     <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
@@ -966,10 +966,10 @@ if tab1:
                                 """
                                 
                                 payload = {
-                                    "sender": {"email": sender_email, "name": "Check Fornitori AI"},
+                                    "sender": {"email": sender_email, "name": "Analisi Fatture AI"},
                                     "to": [{"email": new_email, "name": new_name}],
                                     "cc": [{"email": "mattiadavolio90@gmail.com"}],
-                                    "subject": "🆕 Benvenuto - Credenziali Accesso Check Fornitori AI",
+                                    "subject": "🆕 Benvenuto - Credenziali Accesso Analisi Fatture AI",
                                     "htmlContent": email_html
                                 }
                                 
