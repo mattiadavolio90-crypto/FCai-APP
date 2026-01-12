@@ -303,12 +303,26 @@ except Exception as e:
     st.stop()
 
 
-# DISABILITO RIPRISTINO SESSIONE DA COOKIE
+# DISABILITO RIPRISTINO SESSIONE DA COOKIE E CANCELLO COOKIE ESISTENTI
 # I cookie causavano problemi con il logout - ora usiamo solo session_state
 try:
     # Inizializza logged_in se non esiste
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
+    
+    # Cancella eventuali cookie esistenti dal browser
+    if 'cookies_cleared' not in st.session_state:
+        try:
+            from datetime import datetime, timedelta
+            cookie_manager = stx.CookieManager(key="cookie_manager_cleanup")
+            past_time = datetime.now() - timedelta(days=365)
+            # Cancella cookie "user_email" se esiste
+            cookie_manager.set("user_email", "", expires_at=past_time)
+            cookie_manager.delete("user_email")
+            st.session_state.cookies_cleared = True
+            logger.info("Cookie esistenti cancellati al primo caricamento")
+        except Exception:
+            logger.exception('Errore pulizia cookie esistenti')
     
     # NON ripristinare MAI da cookie - sessione persa al refresh
     logger.debug("Cookie disabilitati - sessione solo in memory")
