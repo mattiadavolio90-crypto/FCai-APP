@@ -392,20 +392,29 @@ def mostra_pagina_login():
             display: none !important;
         }
         /* Nascondi bottone Manage App */
-        [data-testid="manage-app-button"] {
-            display: none !important;
-        }
-        [data-testid="stDecoration"] {
-            display: none !important;
-        }
-        /* Nascondi toolbar sviluppatore */
-        .stDeployButton {
-            display: none !important;
-        }
-        footer {
-            display: none !important;
-        }
+        [data-testid="manage-app-button"],
+        [data-testid="stDecoration"],
+        .stDeployButton,
+        footer { display: none !important; }
         </style>
+        <script>
+        (function() {
+            function rimuoviManageApp() {
+                const selectors = [
+                    '[data-testid="manage-app-button"]',
+                    '[data-testid="stDecoration"]',
+                    'button[kind="header"]',
+                    '.stDeployButton'
+                ];
+                selectors.forEach(sel => {
+                    document.querySelectorAll(sel).forEach(el => el.remove());
+                });
+            }
+            rimuoviManageApp();
+            setInterval(rimuoviManageApp, 500);
+            new MutationObserver(rimuoviManageApp).observe(document.body, {childList:true, subtree:true});
+        })();
+        </script>
     """, unsafe_allow_html=True)
     
     st.markdown("""
