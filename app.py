@@ -394,7 +394,12 @@ def mostra_pagina_login():
         </style>
     """, unsafe_allow_html=True)
     
-    st.markdown("## 🧠 Analisi Fatture AI")
+    st.markdown("""
+        <h1 style='margin: 0; padding: 0; font-size: 48px; font-weight: 700;'>
+            🧠 <span style='color: #1F2937;'>Analisi</span> 
+            <span style='color: #3B82F6;'>Fatture AI</span>
+        </h1>
+    """, unsafe_allow_html=True)
     st.markdown("### Accedi al Sistema")
     
     tab1, tab2 = st.tabs(["🔑 Login", "🔄 Recupera Password"])
@@ -573,11 +578,9 @@ else:
 
 with col1:
     st.markdown("""
-<h1 style="font-size: 52px; font-weight: 700; margin: 0; display: inline-block;">
-    🧠 <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;">Analisi Fatture AI</span>
+<h1 style='margin: 0; padding: 0; font-size: 52px; font-weight: 700;'>
+    🧠 <span style='color: #1F2937;'>Analisi</span> 
+    <span style='color: #3B82F6;'>Fatture AI</span>
 </h1>
 """, unsafe_allow_html=True)
     st.caption(f"👤 {user.get('nome_ristorante', 'Utente')} | 📧 {user.get('email')}")
