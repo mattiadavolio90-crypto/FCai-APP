@@ -3524,6 +3524,9 @@ if uploaded_files:
                     file_errore[file.name] = error_msg
                     errori.append(f"{file.name}: {error_msg}")
                     
+                    # Warning immediato per file fallito
+                    st.warning(f"⚠️ ERRORE file: {file.name} - {error_msg}")
+                    
                     # Aggiungi a session state per evitare loop
                     st.session_state.files_processati_sessione.add(file.name)
                     
@@ -3572,10 +3575,12 @@ if uploaded_files:
                 st.success(f"✅ **{file_processati}/{total_files} file elaborati con successo!** ({righe_totali} righe){location_text}")
             
             # Report errori con dettaglio
-            if file_errore:
-                st.error(f"❌ **{len(file_errore)}/{total_files} file FALLITI**")
+            if len(file_errore) > 0:
+                st.error(f"❌ {len(file_errore)} file FALLITI:")
+                for nome_file, errore in file_errore.items():
+                    st.write(f"- {nome_file}: {errore}")
                 
-                with st.expander("📋 DETTAGLIO ERRORI", expanded=True):
+                with st.expander("📋 DETTAGLIO ERRORI COMPLETO", expanded=False):
                     for nome_file, errore in file_errore.items():
                         st.code(f"❌ {nome_file}\n   → {errore}", language="text")
                     
