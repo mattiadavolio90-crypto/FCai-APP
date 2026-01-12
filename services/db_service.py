@@ -27,7 +27,7 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     
     Args:
         user_id: ID utente per filtro multi-tenancy
-        force_refresh: Se True, bypassa cache (usato dopo delete)
+        force_refresh: Se True, bypassa cache interna (usato dopo delete)
         supabase_client: Client Supabase (opzionale, usa st.secrets se None)
     
     Returns:
@@ -37,8 +37,17 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     - Legge SOLO da tabella 'fatture' su Supabase
     - Filtra per user_id (isolamento utenti)
     - Nessun fallback JSON o altre fonti
-    - Cache invalidata SOLO con clear() esplicito
+    - force_refresh=True pulisce cache Streamlit prima del caricamento
     """
+    # 🔥 FORCE REFRESH: Pulisci cache se richiesto (es. dopo delete)
+    if force_refresh:
+        logger.info(f"🔄 FORCE REFRESH richiesto per user_id={user_id} - Pulizia cache...")
+        try:
+            import streamlit as st
+            st.cache_data.clear()
+        except Exception as e:
+            logger.warning(f"⚠️ Impossibile pulire cache: {e}")
+    
     # Inizializza client Supabase
     if supabase_client is None:
         try:
