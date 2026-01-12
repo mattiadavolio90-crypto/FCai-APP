@@ -3428,6 +3428,9 @@ uploaded_files = st.file_uploader(
 # Bottone Reset Upload
 if st.button("🔄 Reset upload (pulisci cache sessione)", key="reset_upload_cache"):
     st.session_state.files_processati_sessione = set()
+    # 🔥 Rimuovi flag force_empty per sbloccare caricamento
+    if 'force_empty_until_upload' in st.session_state:
+        del st.session_state.force_empty_until_upload
     st.success("✅ Cache pulita! Puoi ricaricare i file.")
     st.rerun()
 
@@ -3441,6 +3444,12 @@ if 'files_con_errori' not in st.session_state:
 
 # 🔥 GESTIONE FILE CARICATI
 if uploaded_files:
+    # 🚫 BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
+    if st.session_state.get('force_empty_until_upload', False):
+        st.warning("⚠️ **Hai appena eliminato tutte le fatture.** Clicca su 'Reset upload' prima di caricare nuovi file.")
+        st.info("💡 Usa il pulsante '🔄 Reset upload' sopra per sbloccare il caricamento.")
+        st.stop()  # Blocca esecuzione per evitare ricaricamento automatico
+    
     # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
     # ⚠️ IMPORTANTE: Query fresca senza cache per evitare dati stale dopo eliminazione
     try:
