@@ -670,10 +670,21 @@ if user.get('email') in ADMIN_EMAILS:
     with col4:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Logout", type="primary", use_container_width=True, key="logout_btn"):
-            # LOGOUT FORZATO con query param - funziona anche su Streamlit Cloud
-            logger.info("🚨 Logout richiesto - reindirizzo con ?logout=1")
-            st.query_params["logout"] = "1"
-            st.rerun()
+            # Cancella sessione
+            st.session_state.clear()
+            st.session_state.logged_in = False
+            st.session_state.force_logout = True
+            
+            # FORZARE HARD RELOAD con JavaScript - chiude WebSocket
+            logger.warning("🚨 Logout - forzando hard reload JavaScript")
+            st.markdown("""
+            <script>
+                // Forza reload completo della pagina (chiude WebSocket)
+                window.parent.location.href = window.parent.location.origin;
+            </script>
+            """, unsafe_allow_html=True)
+            time.sleep(0.5)
+            st.stop()
 else:
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
@@ -683,10 +694,21 @@ else:
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Logout", type="primary", use_container_width=True, key="logout_btn_alt"):
-            # LOGOUT FORZATO con query param - funziona anche su Streamlit Cloud
-            logger.info("🚨 Logout richiesto - reindirizzo con ?logout=1")
-            st.query_params["logout"] = "1"
-            st.rerun()
+            # Cancella sessione
+            st.session_state.clear()
+            st.session_state.logged_in = False
+            st.session_state.force_logout = True
+            
+            # FORZARE HARD RELOAD con JavaScript - chiude WebSocket
+            logger.warning("🚨 Logout - forzando hard reload JavaScript")
+            st.markdown("""
+            <script>
+                // Forza reload completo della pagina (chiude WebSocket)
+                window.parent.location.href = window.parent.location.origin;
+            </script>
+            """, unsafe_allow_html=True)
+            time.sleep(0.5)
+            st.stop()
 
 
 st.markdown("---")
