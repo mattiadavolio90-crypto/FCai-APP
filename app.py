@@ -316,7 +316,11 @@ try:
     # Se è appena stato fatto logout, cancella il cookie e NON ripristinare
     if st.session_state.logout_in_progress:
         try:
+            from datetime import datetime, timedelta
             cookie_manager = stx.CookieManager(key="cookie_manager_clear")
+            # Imposta cookie a vuoto con scadenza passata per forzare cancellazione
+            past_time = datetime.now() - timedelta(days=1)
+            cookie_manager.set("user_email", "", expires_at=past_time)
             cookie_manager.delete("user_email")
             logger.info("Cookie cancellato dopo logout")
         except Exception:
@@ -642,9 +646,14 @@ if user.get('email') in ADMIN_EMAILS:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Logout", type="primary", use_container_width=True, key="logout_btn"):
             try:
-                # Cancella cookie
+                # Cancella cookie in modo aggressivo
+                from datetime import datetime, timedelta
                 cookie_manager = stx.CookieManager(key="cookie_manager_logout")
+                # Imposta cookie a vuoto con scadenza passata
+                past_time = datetime.now() - timedelta(days=1)
+                cookie_manager.set("user_email", "", expires_at=past_time)
                 cookie_manager.delete("user_email")
+                logger.info("Cookie cancellato al logout")
             except Exception:
                 logger.exception('Errore cancellazione cookie al logout')
             
@@ -672,9 +681,14 @@ else:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Logout", type="primary", use_container_width=True, key="logout_btn_alt"):
             try:
-                # Cancella cookie
+                # Cancella cookie in modo aggressivo
+                from datetime import datetime, timedelta
                 cookie_manager = stx.CookieManager(key="cookie_manager_logout2")
+                # Imposta cookie a vuoto con scadenza passata
+                past_time = datetime.now() - timedelta(days=1)
+                cookie_manager.set("user_email", "", expires_at=past_time)
                 cookie_manager.delete("user_email")
+                logger.info("Cookie cancellato al logout")
             except Exception:
                 logger.exception('Errore cancellazione cookie al logout')
             
