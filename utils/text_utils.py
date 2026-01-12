@@ -1,0 +1,322 @@
+"""
+Modulo text_utils per FCI_PROJECT.
+
+Funzioni per:
+- Normalizzazione descrizioni (memoria globale)
+- Normalizzazione stringhe generiche
+- Estrazione nomi da categorie
+- Estrazione fornitori da XML
+- Aggiunta icone a categorie
+"""
+
+import re
+import logging
+from typing import Optional, Tuple
+
+from config.constants import (
+    REGEX_UNITA_MISURA,
+    REGEX_NUMERI_UNITA,
+    REGEX_SOSTITUZIONI,
+    REGEX_PUNTEGGIATURA,
+    REGEX_ARTICOLI,
+    REGEX_PUNTEGGIATURA_FINALE
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# NORMALIZZAZIONE DESCRIZIONI (MEMORIA GLOBALE)
+# ============================================================
+
+def normalizza_descrizione(descrizione: str) -> str:
+    """
+    Normalizza descrizione per matching intelligente in memoria globale.
+    
+    Operazioni:
+    1. Rimuove unità di misura (KG, L, ML, PZ, ecc.)
+    2. Rimuove numeri (pesi, quantità, prezzi)
+    3. Normalizza abbreviazioni comuni
+    4. Rimuove punteggiatura superflua
+    5. Uniforma spazi
+    
+    Esempi:
+        >>> normalizza_descrizione("POLLO INTERO KG 2.5")
+        'POLLO INTERO'
+        >>> normalizza_descrizione("OLIO EVO 1L BOT.")
+        'OLIO EVO BOTTIGLIA'
+        >>> normalizza_descrizione("PASTA PENNE 500G")
+        'PASTA PENNE'
+    
+    Args:
+        descrizione: stringa descrizione originale
+    
+    Returns:
+        str: descrizione normalizzata
+    """
+    if not descrizione:
+        return ""
+    
+    desc = descrizione.strip().upper()
+    
+    # Step 1: Rimuovi unità di misura comuni (regex precompilate)
+    for regex_unita in REGEX_UNITA_MISURA:
+        desc = regex_unita.sub('', desc)
+    
+    # Step 2: Rimuovi numeri (quantità, pesi, misure) - regex precompilata
+    # Mantieni solo numeri che fanno parte del nome (es: "COCA COLA 330")
+    desc = REGEX_NUMERI_UNITA.sub('', desc)
+    
+    # Step 3: Normalizza abbreviazioni comuni (regex precompilate)
+    for regex_pattern, replacement in REGEX_SOSTITUZIONI.items():
+        desc = regex_pattern.sub(replacement, desc)
+    
+    # Step 4: Rimuovi punteggiatura superflua (regex precompilata)
+    desc = REGEX_PUNTEGGIATURA.sub(' ', desc)
+    
+    # Step 5: Rimuovi articoli e preposizioni comuni (regex precompilate)
+    for regex_articolo in REGEX_ARTICOLI:
+        desc = regex_articolo.sub(' ', desc)
+    
+    # Step 6: Normalizza spazi multipli
+    desc = ' '.join(desc.split())
+    
+    # Step 7: Rimuovi spazi iniziali/finali
+    desc = desc.strip()
+    
+    return desc
+
+
+def get_descrizione_normalizzata_e_originale(descrizione: str) -> Tuple[str, str]:
+    """
+    Restituisce sia descrizione normalizzata che originale.
+    
+    Args:
+        descrizione: descrizione da normalizzare
+    
+    Returns:
+        tuple: (descrizione_normalizzata, descrizione_originale)
+    
+    Esempi:
+        >>> get_descrizione_normalizzata_e_originale("Pasta Penne 500g")
+        ('PASTA PENNE', 'PASTA PENNE 500G')
+    """
+    desc_original = descrizione.strip().upper()
+    desc_normalized = normalizza_descrizione(descrizione)
+    
+    return desc_normalized, desc_original
+
+
+def normalizza_stringa(testo: str) -> str:
+    """
+    Normalizza stringhe per ridurre duplicati AI.
+    
+    - Converte in MAIUSCOLO
+    - Rimuove punteggiatura finale
+    - Normalizza spazi
+    - Tronca a 100 caratteri
+    
+    Args:
+        testo: stringa da normalizzare
+    
+    Returns:
+        str: stringa normalizzata (max 100 char)
+    
+    Esempi:
+        >>> normalizza_stringa("Pollo Intero...")
+        'POLLO INTERO'
+        >>> normalizza_stringa("  pasta   penne  ")
+        'PASTA PENNE'
+    """
+    if not testo or not isinstance(testo, str):
+        return ""
+    
+    testo = testo.upper()
+    testo = REGEX_PUNTEGGIATURA_FINALE.sub('', testo)  # Regex precompilata
+    testo = ' '.join(testo.split())
+    return testo[:100].strip()
+
+
+def test_normalizzazione() -> None:
+    """
+    Testa funzione normalizzazione con casi comuni.
+    Utile per debug e verifiche post-refactoring.
+    
+    Output:
+        Stampa tabella comparativa descrizioni originali → normalizzate
+    """
+    test_cases = [
+        "POLLO INTERO KG 2.5",
+        "POLLO INT. KG",
+        "POLLO INTERO",
+        "OLIO EVO 1L BOT.",
+        "OLIO EVO BOTTIGLIA 1 LITRO",
+        "PASTA PENNE 500G CONF.",
+        "PASTA PENNE CONFEZIONE",
+        "COCA COLA 330 ML LAT.",
+        "COCA COLA LATTINA"
+    ]
+    
+    print("\n=== TEST NORMALIZZAZIONE ===")
+    for test in test_cases:
+        normalized = normalizza_descrizione(test)
+        print(f"{test:<40} → {normalized}")
+    print("=" * 70)
+
+
+# ============================================================
+# ESTRAZIONE NOMI E PARSING
+# ============================================================
+
+def estrai_nome_categoria(categoria_con_icona: str) -> str:
+    """
+    Estrae solo il nome dalla categoria con icona.
+    
+    Args:
+        categoria_con_icona: "🍖 CARNE" o "CARNE"
+    
+    Returns:
+        str: "CARNE" (solo nome, senza emoji)
+    
+    Esempi:
+        >>> estrai_nome_categoria("🍖 CARNE")
+        'CARNE'
+        >>> estrai_nome_categoria("CARNE")
+        'CARNE'
+        >>> estrai_nome_categoria("")
+        'Da Classificare'
+        >>> estrai_nome_categoria(None)
+        'Da Classificare'
+    """
+    if not categoria_con_icona:
+        return "Da Classificare"
+    
+    # Se contiene spazio, prendi parte dopo primo spazio
+    if ' ' in categoria_con_icona:
+        return categoria_con_icona.split(' ', 1)[1].strip()
+    
+    # Altrimenti ritorna come è (già senza emoji)
+    return categoria_con_icona.strip()
+
+
+def estrai_fornitore_xml(fattura: dict) -> str:
+    """
+    Estrae il nome del fornitore gestendo sia società che persone fisiche.
+    
+    Priorità:
+    1. Denominazione (società)
+    2. Nome + Cognome (persona fisica) 
+    3. Solo Nome (fallback)
+    4. "Fornitore Sconosciuto"
+    
+    Args:
+        fattura: dizionario parsed da xmltodict
+    
+    Returns:
+        str: Nome fornitore normalizzato (MAIUSCOLO)
+    
+    Esempi:
+        >>> # Mock XML con società
+        >>> fattura = {"FatturaElettronicaHeader": {"CedentePrestatore": 
+        ...     {"DatiAnagrafici": {"Anagrafica": {"Denominazione": "ACME SRL"}}}}}
+        >>> estrai_fornitore_xml(fattura)
+        'ACME SRL'
+    """
+    # Import locale per evitare circular dependency
+    from .formatters import safe_get
+    
+    try:
+        # Estrai nodo Anagrafica
+        anagrafica = safe_get(
+            fattura,
+            ['FatturaElettronicaHeader', 'CedentePrestatore', 'DatiAnagrafici', 'Anagrafica'],
+            default=None,
+            keep_list=False
+        )
+        
+        if anagrafica is None:
+            return 'Fornitore Sconosciuto'
+        
+        # Priorità 1: Denominazione (società)
+        denominazione = safe_get(anagrafica, ['Denominazione'], default=None, keep_list=False)
+        if denominazione and isinstance(denominazione, str) and denominazione.strip():
+            fornitore = normalizza_stringa(denominazione)
+            logger.debug(f"🏢 Fornitore estratto da Denominazione: {fornitore}")
+            return fornitore
+        
+        # Priorità 2: Nome + Cognome (persona fisica)
+        nome = safe_get(anagrafica, ['Nome'], default=None, keep_list=False)
+        cognome = safe_get(anagrafica, ['Cognome'], default=None, keep_list=False)
+        
+        nome_str = nome.strip() if nome and isinstance(nome, str) else ""
+        cognome_str = cognome.strip() if cognome and isinstance(cognome, str) else ""
+        
+        if nome_str and cognome_str:
+            fornitore = f"{nome_str} {cognome_str}".upper()
+            logger.debug(f"👤 Fornitore estratto da Nome+Cognome: {fornitore}")
+            return fornitore
+        elif cognome_str:  # Solo cognome
+            fornitore = cognome_str.upper()
+            logger.debug(f"👤 Fornitore estratto da Cognome: {fornitore}")
+            return fornitore
+        elif nome_str:  # Solo nome
+            fornitore = nome_str.upper()
+            logger.debug(f"👤 Fornitore estratto da Nome: {fornitore}")
+            return fornitore
+        
+        # Fallback finale
+        logger.warning("⚠️ Nessun campo fornitore trovato in Anagrafica")
+        return 'Fornitore Sconosciuto'
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Errore estrazione fornitore: {e}")
+        return 'Fornitore Sconosciuto'
+
+
+def aggiungi_icona_categoria(
+    nome_categoria: str,
+    supabase_client=None
+) -> str:
+    """
+    Aggiunge icona emoji al nome categoria (query DB).
+    
+    Args:
+        nome_categoria: "CARNE"
+        supabase_client: istanza Supabase client (opzionale)
+    
+    Returns:
+        str: "🍖 CARNE" (con icona da DB) o "CARNE" se fallback
+    
+    Note:
+        - Richiede connessione Supabase (tabella 'categorie')
+        - Fallback graceful senza icona se DB non disponibile
+    
+    Esempi:
+        >>> aggiungi_icona_categoria("CARNE", None)
+        'CARNE'
+        >>> # Con DB mockato: aggiungi_icona_categoria("CARNE", mock_client)
+        >>> # '🍖 CARNE'
+    """
+    if supabase_client is None:
+        # Fallback: ritorna senza icona
+        return nome_categoria
+    
+    try:
+        # Query icona da database
+        response = supabase_client.table('categorie')\
+            .select('icona')\
+            .eq('nome', nome_categoria.strip())\
+            .eq('attiva', True)\
+            .limit(1)\
+            .execute()
+        
+        if response.data and len(response.data) > 0:
+            icona = response.data[0].get('icona', '📦')
+            return f"{icona} {nome_categoria}"
+        
+        # Fallback: ritorna senza icona
+        return nome_categoria
+        
+    except Exception as e:
+        logger.warning(f"Errore query icona per categoria '{nome_categoria}': {e}")
+        return nome_categoria

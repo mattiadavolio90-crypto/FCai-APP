@@ -1,0 +1,660 @@
+"""
+AI Service - Classificazione Intelligente e Gestione Memoria Prodotti
+
+Gestisce:
+- Classificazione automatica prodotti con OpenAI
+- Sistema memoria ibrida (admin + locale utente + globale)
+- Cache in-memory per eliminare N+1 queries
+- Correzioni basate su dizionario keyword
+- Retry logic per API OpenAI
+
+Pattern: Dependency Injection per testabilità
+"""
+
+import json
+import os
+import shutil
+from datetime import datetime
+from typing import Optional, Dict, List, Any
+import streamlit as st
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from openai import OpenAI, RateLimitError, APITimeoutError, APIConnectionError, APIError
+
+# Import da moduli interni
+from config.constants import DIZIONARIO_CORREZIONI, TUTTE_LE_CATEGORIE
+from utils.text_utils import get_descrizione_normalizzata_e_originale, normalizza_stringa
+from utils.validation import is_dicitura_sicura
+
+# Configurazione logger
+import logging
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# COSTANTI
+# ============================================================
+MEMORIA_AI_FILE = "memoria_ai_correzioni.json"
+RETRIABLE_ERRORS = (RateLimitError, APITimeoutError, APIConnectionError, APIError)
+MAX_TOKENS_PER_BATCH = 12000  # Limite sicuro per evitare timeout
+
+# ============================================================
+# CACHE GLOBALE IN-MEMORY (ELIMINA N+1 QUERY)
+# ============================================================
+_memoria_cache = {
+    'prodotti_utente': {},      # {user_id: {descrizione: categoria}}
+    'prodotti_master': {},      # {descrizione: categoria}
+    'classificazioni_manuali': {},  # {descrizione: {categoria, is_dicitura}}
+    'version': 0,               # Incrementato ad ogni invalidazione
+    'loaded': False
+}
+
+
+# ============================================================
+# INIZIALIZZAZIONE OPENAI CLIENT
+# ============================================================
+def _get_openai_client(api_key: str = None) -> OpenAI:
+    """
+    Ottiene client OpenAI inizializzato.
+    
+    Args:
+        api_key: API key OpenAI (se None, legge da secrets)
+    
+    Returns:
+        OpenAI: Client inizializzato
+    """
+    if api_key is None:
+        try:
+            api_key = st.secrets["OPENAI_API_KEY"]
+        except Exception as e:
+            logger.exception("API Key OpenAI non trovata")
+            raise ValueError("API Key OpenAI mancante") from e
+    
+    return OpenAI(api_key=api_key)
+
+
+# ============================================================
+# FUNZIONI MEMORIA CACHE
+# ============================================================
+
+def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any]:
+    """
+    Carica TUTTE le memorie in una volta sola (1 query per tabella invece di N query).
+    Elimina completamente il problema N+1 query.
+    
+    Args:
+        user_id: UUID utente corrente
+        supabase_client: Client Supabase (opzionale, usa default se None)
+    
+    Returns:
+        dict: Cache completa con tutte le memorie
+    """
+    global _memoria_cache
+    
+    # Se già caricata, ritorna cache esistente
+    if _memoria_cache['loaded']:
+        return _memoria_cache
+    
+    # Usa client iniettato o fallback a st.secrets
+    if supabase_client is None:
+        try:
+            from supabase import create_client
+            url = st.secrets["SUPABASE_URL"]
+            key = st.secrets["SUPABASE_KEY"]
+            supabase_client = create_client(url, key)
+        except Exception as e:
+            logger.error(f"Impossibile creare client Supabase: {e}")
+            return _memoria_cache
+    
+    try:
+        # Query 1: Carica TUTTA la memoria locale utente (1 query sola)
+        result_locale = supabase_client.table('prodotti_utente')\
+            .select('descrizione, categoria')\
+            .eq('user_id', user_id)\
+            .execute()
+        
+        if result_locale.data:
+            _memoria_cache['prodotti_utente'][user_id] = {
+                row['descrizione']: row['categoria'] 
+                for row in result_locale.data
+            }
+            logger.info(f"📦 Cache LOCALE caricata: {len(result_locale.data)} prodotti")
+        
+        # Query 2: Carica TUTTA la memoria globale (1 query sola)
+        result_globale = supabase_client.table('prodotti_master')\
+            .select('descrizione, categoria')\
+            .execute()
+        
+        if result_globale.data:
+            _memoria_cache['prodotti_master'] = {
+                row['descrizione']: row['categoria'] 
+                for row in result_globale.data
+            }
+            logger.info(f"📦 Cache GLOBALE caricata: {len(result_globale.data)} prodotti")
+        
+        # Query 3: Carica TUTTE le classificazioni manuali admin (1 query sola)
+        result_manuali = supabase_client.table('classificazioni_manuali')\
+            .select('descrizione, categoria_corretta, is_dicitura')\
+            .execute()
+        
+        if result_manuali.data:
+            _memoria_cache['classificazioni_manuali'] = {
+                row['descrizione']: {
+                    'categoria': row['categoria_corretta'],
+                    'is_dicitura': row.get('is_dicitura', False)
+                }
+                for row in result_manuali.data
+            }
+            logger.info(f"📦 Cache MANUALI caricata: {len(result_manuali.data)} classificazioni")
+        
+        _memoria_cache['loaded'] = True
+        _memoria_cache['version'] += 1
+        
+        logger.info(f"✅ Cache completa caricata (v{_memoria_cache['version']})")
+        return _memoria_cache
+        
+    except Exception as e:
+        logger.error(f"Errore caricamento cache completa: {e}")
+        return _memoria_cache
+
+
+def invalida_cache_memoria():
+    """
+    Invalida la cache in-memory forzando ricaricamento al prossimo accesso.
+    Da chiamare dopo INSERT/UPDATE/DELETE su tabelle memoria.
+    """
+    global _memoria_cache
+    _memoria_cache['loaded'] = False
+    _memoria_cache['prodotti_utente'] = {}
+    _memoria_cache['prodotti_master'] = {}
+    _memoria_cache['classificazioni_manuali'] = {}
+    logger.info("🔄 Cache memoria invalidata")
+
+
+def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
+    """
+    Ottiene categoria prodotto con priorità IBRIDA usando CACHE IN-MEMORY.
+    ELIMINA N+1 QUERY: usa cache invece di query ripetute.
+    
+    1. Memoria LOCALE utente (massima priorità) - personalizzazioni cliente
+    2. Memoria GLOBALE (fallback) - condivisa tra tutti i clienti
+    3. "Da Classificare" (se non trovato in nessuna memoria)
+    
+    Args:
+        descrizione: descrizione prodotto
+        user_id: UUID utente
+    
+    Returns:
+        str: categoria trovata
+    """
+    global _memoria_cache
+    
+    try:
+        # Carica cache se non già caricata (solo 1 volta per sessione)
+        if not _memoria_cache['loaded']:
+            carica_memoria_completa(user_id)
+        
+        # 1️⃣ Check memoria LOCALE utente (da cache, 0 query!)
+        if user_id in _memoria_cache['prodotti_utente']:
+            locale_dict = _memoria_cache['prodotti_utente'][user_id]
+            if descrizione in locale_dict:
+                categoria = locale_dict[descrizione]
+                logger.debug(f"🔵 LOCALE (cache): '{descrizione[:40]}...' → {categoria}")
+                return categoria
+        
+        # 2️⃣ Check memoria GLOBALE (da cache, 0 query!)
+        if descrizione in _memoria_cache['prodotti_master']:
+            categoria = _memoria_cache['prodotti_master'][descrizione]
+            logger.debug(f"🟢 GLOBALE (cache): '{descrizione[:40]}...' → {categoria}")
+            return categoria
+        
+        # 3️⃣ Fallback
+        logger.debug(f"⚪ NUOVO: '{descrizione[:40]}...' → Da Classificare")
+        return "Da Classificare"
+        
+    except Exception as e:
+        logger.warning(f"Errore ottieni_categoria (cache) per '{descrizione[:40]}...': {e}")
+        return "Da Classificare"
+
+
+# ============================================================
+# FUNZIONI CORREZIONE E CATEGORIZZAZIONE
+# ============================================================
+
+def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
+    """
+    Applica correzioni basate su keyword nel dizionario.
+    
+    Args:
+        descrizione: testo descrizione prodotto
+        categoria_ai: categoria assegnata da AI (fallback)
+    
+    Returns:
+        str: categoria corretta o categoria_ai se nessun match
+    """
+    if not descrizione or not isinstance(descrizione, str):
+        return categoria_ai
+    
+    desc_upper = descrizione.upper()
+    
+    # Controllo con keyword nel dizionario
+    for keyword, categoria in DIZIONARIO_CORREZIONI.items():
+        if keyword in desc_upper:
+            return categoria
+    
+    return categoria_ai
+
+
+def salva_correzione_in_memoria_globale(
+    descrizione: str,
+    vecchia_categoria: str,
+    nuova_categoria: str,
+    user_email: str,
+    supabase_client=None
+) -> bool:
+    """
+    Salva correzione utente in memoria globale.
+    Quando un utente corregge manualmente una categoria, aggiorna memoria
+    così tutti i futuri clienti beneficiano della correzione.
+    
+    Args:
+        descrizione: descrizione prodotto
+        vecchia_categoria: categoria assegnata da AI (sbagliata)
+        nuova_categoria: categoria corretta dall'utente
+        user_email: email utente che ha corretto
+        supabase_client: Client Supabase (opzionale)
+    
+    Returns:
+        bool: True se successo, False altrimenti
+    """
+    # Usa client iniettato o fallback
+    if supabase_client is None:
+        try:
+            from supabase import create_client
+            url = st.secrets["SUPABASE_URL"]
+            key = st.secrets["SUPABASE_KEY"]
+            supabase_client = create_client(url, key)
+        except Exception as e:
+            logger.error(f"Impossibile creare client Supabase: {e}")
+            return False
+    
+    try:
+        # Normalizza descrizione
+        desc_normalized, desc_original = get_descrizione_normalizzata_e_originale(descrizione)
+        
+        # Check se esiste già in memoria
+        existing = supabase_client.table('prodotti_master')\
+            .select('id, volte_visto')\
+            .eq('descrizione', desc_normalized)\
+            .limit(1)\
+            .execute()
+        
+        if existing.data and len(existing.data) > 0:
+            # AGGIORNA esistente con categoria corretta
+            record = existing.data[0]
+            
+            supabase_client.table('prodotti_master').update({
+                'categoria': nuova_categoria,
+                'classificato_da': f'Utente ({user_email})',
+                'confidence': 'altissima',
+                'ultima_modifica': datetime.now().isoformat()
+            }).eq('id', record['id']).execute()
+            
+            # Invalida cache per forzare ricaricamento
+            invalida_cache_memoria()
+            
+            logger.info(f"📚 CORREZIONE UTENTE aggiornata in memoria: '{desc_normalized}' {vecchia_categoria} → {nuova_categoria} (by {user_email})")
+        
+        else:
+            # INSERISCI nuovo record con categoria corretta
+            supabase_client.table('prodotti_master').insert({
+                'descrizione': desc_normalized,
+                'categoria': nuova_categoria,
+                'classificato_da': f'Utente ({user_email})',
+                'confidence': 'altissima',
+                'volte_visto': 1,
+                'created_at': datetime.now().isoformat(),
+                'ultima_modifica': datetime.now().isoformat()
+            }).execute()
+            
+            # Invalida cache per forzare ricaricamento
+            invalida_cache_memoria()
+            
+            logger.info(f"📚 CORREZIONE UTENTE salvata in memoria: '{desc_normalized}' → {nuova_categoria} (by {user_email})")
+        
+        return True
+    
+    except Exception as e:
+        logger.error(f"Errore salvataggio correzione in memoria: {e}")
+        return False
+
+
+def categorizza_con_memoria(
+    descrizione: str,
+    prezzo: float,
+    quantita: float,
+    user_id: Optional[str] = None,
+    supabase_client=None
+) -> str:
+    """
+    Categorizza usando memoria GLOBALE multi-livello con CACHE IN-MEMORY.
+    ELIMINA N+1 QUERY: usa cache invece di query ripetute.
+    
+    PRIORITÀ CORRETTA:
+    1. Memoria correzioni admin (classificazioni_manuali) - PRIORITÀ ASSOLUTA
+    2. Memoria LOCALE utente (prodotti_utente) - personalizzazioni cliente
+    3. Memoria GLOBALE prodotti (prodotti_master) - condivisa tra tutti
+    4. Check dicitura (se prezzo = 0)
+    5. Dizionario keyword - FALLBACK FINALE
+    
+    Args:
+        descrizione: testo descrizione
+        prezzo: prezzo_unitario
+        quantita: quantità
+        user_id: ID utente (per log)
+        supabase_client: Client Supabase (opzionale)
+    
+    Returns:
+        str: categoria finale
+    """
+    global _memoria_cache
+    
+    # Usa client iniettato o fallback
+    if supabase_client is None:
+        try:
+            from supabase import create_client
+            url = st.secrets["SUPABASE_URL"]
+            key = st.secrets["SUPABASE_KEY"]
+            supabase_client = create_client(url, key)
+        except Exception:
+            pass  # Procedi senza client
+    
+    try:
+        # Carica cache se non già caricata
+        if not _memoria_cache['loaded'] and user_id:
+            carica_memoria_completa(user_id, supabase_client)
+        
+        # LIVELLO 1: Check memoria admin (da cache, 0 query!)
+        desc_stripped = descrizione.strip()
+        if desc_stripped in _memoria_cache['classificazioni_manuali']:
+            record = _memoria_cache['classificazioni_manuali'][desc_stripped]
+            if record.get('is_dicitura'):
+                logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → DICITURA (validata admin)")
+                return "📝 NOTE E DICITURE"
+            else:
+                logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → {record['categoria']} (validata admin)")
+                return record['categoria']
+    
+    except Exception as e:
+        logger.warning(f"Errore check memoria admin (cache): {e}")
+    
+    # LIVELLO 2: Check memoria LOCALE utente (personalizzazioni cliente - priorità alta)
+    try:
+        if user_id and user_id in _memoria_cache['prodotti_utente']:
+            locale_dict = _memoria_cache['prodotti_utente'][user_id]
+            if descrizione in locale_dict:
+                categoria = locale_dict[descrizione]
+                logger.info(f"🔵 LOCALE UTENTE (cache): '{descrizione}' → {categoria} (personalizzazione cliente)")
+                return categoria
+    
+    except Exception as e:
+        logger.warning(f"Errore check memoria locale utente (cache): {e}")
+    
+    # LIVELLO 3: Check memoria GLOBALE (da cache, 0 query!)
+    try:
+        # Normalizza descrizione per matching intelligente
+        desc_normalized, desc_original = get_descrizione_normalizzata_e_originale(descrizione)
+        
+        if desc_normalized in _memoria_cache['prodotti_master']:
+            categoria = _memoria_cache['prodotti_master'][desc_normalized]
+            logger.info(f"🟢 MEMORIA GLOBALE (cache): '{descrizione}' → {categoria} (norm: '{desc_normalized}')")
+            return categoria
+    
+    except Exception as e:
+        logger.warning(f"Errore check memoria globale (cache): {e}")
+    
+    # LIVELLO 4: Check dicitura (se prezzo = 0)
+    if prezzo == 0 and is_dicitura_sicura(descrizione, prezzo, quantita):
+        return "📝 NOTE E DICITURE"
+    
+    # LIVELLO 5: Dizionario keyword (fallback)
+    categoria_keyword = applica_correzioni_dizionario(descrizione, "Da Classificare")
+    
+    # Se la categoria è diversa da "Da Classificare", salva in memoria globale per futuri clienti
+    if categoria_keyword != "Da Classificare" and supabase_client:
+        try:
+            # Normalizza descrizione per salvataggio
+            desc_normalized, desc_original = get_descrizione_normalizzata_e_originale(descrizione)
+            
+            supabase_client.table('prodotti_master').insert({
+                'descrizione': desc_normalized,
+                'categoria': categoria_keyword,
+                'confidence': 'media',
+                'volte_visto': 1,
+                'classificato_da': 'keyword',
+                'created_at': datetime.now().isoformat(),
+                'ultima_modifica': datetime.now().isoformat()
+            }).execute()
+            logger.info(f"💾 SALVATO in memoria globale: '{desc_normalized}' (orig: '{desc_original}') → {categoria_keyword} (keyword)")
+        except Exception as e:
+            # Ignora errore duplicato (race condition)
+            if 'duplicate key' not in str(e).lower() and 'unique constraint' not in str(e).lower():
+                logger.warning(f"Errore salvataggio memoria globale: {e}")
+    
+    return categoria_keyword
+
+
+# ============================================================
+# CLASSIFICAZIONE BATCH CON OPENAI
+# ============================================================
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    retry=retry_if_exception_type(RETRIABLE_ERRORS)
+)
+def classifica_con_ai(
+    lista_descrizioni: List[str],
+    lista_fornitori: Optional[List[str]] = None,
+    openai_client: Optional[OpenAI] = None
+) -> List[str]:
+    """
+    Classificazione AI con JSON strutturato + correzioni dizionario.
+    Usa retry automatico per gestire rate limits OpenAI.
+    
+    Args:
+        lista_descrizioni: Lista descrizioni prodotti da classificare
+        lista_fornitori: Lista fornitori (opzionale, per contesto)
+        openai_client: Client OpenAI (opzionale, crea nuovo se None)
+    
+    Returns:
+        List[str]: Lista categorie classificate (stesso ordine input)
+    """
+    if not lista_descrizioni:
+        return []
+    
+    # Usa client iniettato o crea nuovo
+    if openai_client is None:
+        openai_client = _get_openai_client()
+    
+    # Carica memoria AI legacy (per compatibilità)
+    memoria_ai = carica_memoria_ai()
+    risultati = {}
+    da_chiedere_gpt = []
+    
+    for desc in lista_descrizioni:
+        if desc in memoria_ai:
+            risultati[desc] = memoria_ai[desc]
+        else:
+            da_chiedere_gpt.append(desc)
+    
+    if not da_chiedere_gpt:
+        # Memoria AI ha priorità massima (correzioni manuali utente)
+        # Dizionario applicato SOLO se descrizione non in memoria
+        return [
+            risultati[d] if d in risultati 
+            else applica_correzioni_dizionario(d, "NO FOOD")
+            for d in lista_descrizioni
+        ]
+
+    prompt = f"""
+Sei un esperto controller per ristoranti. Classifica questi articoli usando RAGIONAMENTO INTELLIGENTE.
+
+CATEGORIE DISPONIBILI:
+{', '.join(TUTTE_LE_CATEGORIE)}
+
+REGOLE CLASSIFICAZIONE:
+1. **DICITURE**: Se descrizione è riferimento documento (DDT, TRASPORTO, BOLLA, RIF), imballo, spedizione → "NOTE E DICITURE"
+2. **MATERIALI NO FOOD**: Pellicole, rotoloni, tovaglioli, carta, detersivi, sacchetti, contenitori → "NO FOOD"
+3. **BEVANDE**: Distingui:
+   - Alcolici specifici (VINI, BIRRE, AMARI, DISTILLATI)
+   - Generici → "BEVANDE"
+   - Acqua → "ACQUA"
+   - Caffè → "CAFFÈ"
+4. **SPESE OPERATIVE**: Manutenzione, consulenze, affitto, utenze → categorie SPESE
+5. **FOOD**: Prodotti alimentari per cucina ristorante
+
+IMPORTANTE:
+- Usa categoria specifica (es. "CARNE" non "PRODOTTI DA FORNO")
+- Se incerto tra 2 categorie, scegli più probabile per ristorante
+- "Da Classificare" SOLO se impossibile determinare
+
+FORMATO RISPOSTA (JSON):
+{{"categorie": ["CATEGORIA1", "CATEGORIA2", ...]}}
+
+ARTICOLI DA CLASSIFICARE:
+{json.dumps(da_chiedere_gpt, ensure_ascii=False)}
+"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1500,
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
+        
+        testo = response.choices[0].message.content.strip()
+        dati = json.loads(testo)
+        categorie_gpt = dati.get("categorie", [])
+        
+        # Combina risultati memoria + GPT
+        for idx, desc in enumerate(da_chiedere_gpt):
+            if idx < len(categorie_gpt):
+                risultati[desc] = categorie_gpt[idx]
+            else:
+                risultati[desc] = "Da Classificare"
+        
+        # Ritorna nell'ordine originale
+        return [risultati.get(d, "Da Classificare") for d in lista_descrizioni]
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Errore parsing JSON da OpenAI: {e}")
+        return [applica_correzioni_dizionario(d, "NO FOOD") for d in lista_descrizioni]
+    except Exception as e:
+        logger.error(f"Errore classificazione AI: {e}")
+        return [applica_correzioni_dizionario(d, "NO FOOD") for d in lista_descrizioni]
+
+
+# ============================================================
+# UI HELPER: LOADING ANIMATION
+# ============================================================
+
+def mostra_loading_ai(placeholder, messaggio: str = "Elaborazione in corso"):
+    """
+    Mostra animazione loading a tema AI/Neural Network in un placeholder.
+    Usa st.empty() placeholder per garantire rimozione anche in caso di errore.
+    
+    Args:
+        placeholder: st.empty() placeholder per rendering
+        messaggio: Testo messaggio da mostrare
+    """
+    placeholder.markdown(f"""
+        <style>
+        @keyframes pulse {{
+            0%, 100% {{ opacity: 0.4; }}
+            50% {{ opacity: 1; }}
+        }}
+        .loading-ai {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            color: white;
+            font-weight: 600;
+            animation: pulse 2s ease-in-out infinite;
+        }}
+        .loading-ai::before {{
+            content: "🧠";
+            font-size: 32px;
+            margin-right: 15px;
+        }}
+        </style>
+        <div class="loading-ai">
+            {messaggio}...
+        </div>
+    """, unsafe_allow_html=True)
+
+
+# ============================================================
+# LEGACY FUNCTIONS (DEPRECATED - Usa memoria Supabase)
+# ============================================================
+
+def carica_memoria_ai() -> Dict[str, str]:
+    """
+    [LEGACY] Carica memoria AI da file JSON con cache.
+    
+    ⚠️ DEPRECATO: Usa carica_memoria_completa() + Supabase invece.
+    Mantenuto per compatibilità con codice esistente.
+    
+    Returns:
+        dict: {descrizione: categoria}
+    """
+    if os.path.exists(MEMORIA_AI_FILE):
+        try:
+            with open(MEMORIA_AI_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"⚠️ Impossibile caricare {MEMORIA_AI_FILE}: {e}")
+            return {}
+    return {}
+
+
+def salva_memoria_ai(memoria_ai: Dict[str, str]) -> bool:
+    """
+    [LEGACY] Salvataggio atomico per prevenire corruzione file.
+    
+    ⚠️ DEPRECATO: Usa salva_correzione_in_memoria_globale() invece.
+    Mantenuto per compatibilità.
+    
+    Args:
+        memoria_ai: Dict {descrizione: categoria}
+    
+    Returns:
+        bool: True se successo
+    """
+    try:
+        temp_file = MEMORIA_AI_FILE + '.tmp'
+        
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            json.dump(memoria_ai, f, ensure_ascii=False, indent=2)
+        
+        shutil.move(temp_file, MEMORIA_AI_FILE)
+        logger.info(f"💾 Memoria AI salvata: {len(memoria_ai)} voci")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Errore salvataggio memoria AI: {e}")
+        return False
+
+
+def aggiorna_memoria_ai(descrizione: str, categoria: str):
+    """
+    [LEGACY] Aggiorna entry in memoria AI.
+    
+    ⚠️ DEPRECATO: Usa salva_correzione_in_memoria_globale() invece.
+    """
+    memoria_ai = carica_memoria_ai()
+    memoria_ai[descrizione] = categoria
+    salva_memoria_ai(memoria_ai)
