@@ -407,29 +407,21 @@ def mostra_pagina_login():
         .css-1d391kg {
             display: none !important;
         }
-        /* Nascondi bottone Manage App */
-        [data-testid="manage-app-button"],
-        [data-testid="stDecoration"],
-        .stDeployButton,
-        footer { display: none !important; }
+        [data-testid="manage-app-button"] { display: none !important; }
+        [data-testid="stDecoration"] { display: none !important; }
+        footer { visibility: hidden !important; }
         </style>
         <script>
-        (function() {
-            function rimuoviManageApp() {
-                const selectors = [
-                    '[data-testid="manage-app-button"]',
-                    '[data-testid="stDecoration"]',
-                    'button[kind="header"]',
-                    '.stDeployButton'
-                ];
-                selectors.forEach(sel => {
-                    document.querySelectorAll(sel).forEach(el => el.remove());
-                });
-            }
-            rimuoviManageApp();
-            setInterval(rimuoviManageApp, 500);
-            new MutationObserver(rimuoviManageApp).observe(document.body, {childList:true, subtree:true});
-        })();
+        setInterval(function() {
+            var buttons = document.querySelectorAll('[data-testid="manage-app-button"]');
+            buttons.forEach(function(btn) { btn.remove(); });
+            
+            var decorations = document.querySelectorAll('[data-testid="stDecoration"]');
+            decorations.forEach(function(dec) { dec.remove(); });
+            
+            var headers = document.querySelectorAll('button[kind="header"]');
+            headers.forEach(function(h) { h.remove(); });
+        }, 200);
         </script>
     """, unsafe_allow_html=True)
     
