@@ -979,9 +979,17 @@ def elimina_tutte_fatture(user_id):
         # Log operazione
         logger.warning(f"⚠️ ELIMINAZIONE MASSIVA: {num_fatture} fatture ({num_righe} righe) da user {user_id}")
         
-        # Invalida cache per ricaricare dati
+        # 🔥 PULIZIA CACHE COMPLETA: Multiple invalidazioni per garantire reset
         st.cache_data.clear()
         invalida_cache_memoria()
+        try:
+            st.cache_resource.clear()
+        except:
+            pass
+        
+        # 🔥 RESET SESSION STATE: Reinizializza set vuoti per i file
+        st.session_state.files_processati_sessione = set()
+        st.session_state.files_con_errori = set()
         
         return {"success": True, "error": None, "righe_eliminate": num_righe, "fatture_eliminate": num_fatture}
         
@@ -3242,13 +3250,11 @@ if not df_cache.empty:
                     
                     # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
                     invalida_cache_memoria()  # Reset memoria AI
-                    st.cache_data.clear()  # Reset cache Streamlit
+                    st.cache_data.clear()  # Reset cache Streamlit (prima chiamata)
                     
-                    # 🔥 RESET SESSION: Pulisci lista file processati
-                    if 'files_processati_sessione' in st.session_state:
-                        st.session_state.files_processati_sessione.clear()
-                    if 'files_con_errori' in st.session_state:
-                        st.session_state.files_con_errori.clear()
+                    # 🔥 RESET SESSION: Reinizializza set vuoti (non solo clear)
+                    st.session_state.files_processati_sessione = set()
+                    st.session_state.files_con_errori = set()
                     
                     progress.progress(40, text="Pulizia file JSON locali...")
                     
@@ -3388,6 +3394,7 @@ if 'files_con_errori' not in st.session_state:
 # 🔥 GESTIONE FILE CARICATI
 if uploaded_files:
     # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
+    # ⚠️ IMPORTANTE: Query fresca senza cache per evitare dati stale dopo eliminazione
     try:
         user_id = st.session_state.user_data["id"]
         response = (
@@ -3400,6 +3407,12 @@ if uploaded_files:
         
         # DEBUG TEMPORANEO - rimuovi dopo test
         st.write(f"🔍 DEBUG: File su Supabase per questo utente: {len(file_su_supabase)}")
+        
+        # 🔍 VERIFICA COERENZA: Se DB è vuoto ma session ha file, è un errore -> reset
+        if len(file_su_supabase) == 0 and len(st.session_state.files_processati_sessione) > 0:
+            logger.warning(f"⚠️ INCOERENZA RILEVATA: DB vuoto ma session ha {len(st.session_state.files_processati_sessione)} file -> RESET")
+            st.session_state.files_processati_sessione = set()
+            st.session_state.files_con_errori = set()
         
     except Exception as e:
         logger.exception(f"Errore caricamento file da DB per user_id={st.session_state.user_data.get('id')}")
