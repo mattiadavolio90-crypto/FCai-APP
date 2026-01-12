@@ -3394,7 +3394,6 @@ if uploaded_files:
             supabase.table("fatture")
             .select("file_origine")
             .eq("user_id", user_id)  # ← OBBLIGATORIO: solo file di questo utente
-            .eq("status", "completato")  # ← ignora file falliti/test
             .execute()
         )
         file_su_supabase = {row["file_origine"] for row in response.data if row.get("file_origine")}
