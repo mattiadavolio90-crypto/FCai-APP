@@ -925,7 +925,7 @@ if tab1:
                         nuovo_utente = {
                             'email': new_email,
                             'nome_ristorante': new_name,
-                            'password': password_hash,
+                            'password_hash': password_hash,
                             'attivo': True,
                             'created_at': datetime.now(timezone.utc).isoformat()
                         }
