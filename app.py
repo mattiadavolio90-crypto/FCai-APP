@@ -864,6 +864,10 @@ if user.get('email') in ADMIN_EMAILS:
             if user_email:
                 registra_logout_utente(user_email)
             
+            # Reset file processati quando cambia utente
+            if 'files_processati_sessione' in st.session_state:
+                st.session_state.files_processati_sessione = set()
+            
             # Cancella sessione
             st.session_state.clear()
             st.session_state.logged_in = False
@@ -892,6 +896,10 @@ else:
             user_email = st.session_state.get('user_data', {}).get('email')
             if user_email:
                 registra_logout_utente(user_email)
+            
+            # Reset file processati quando cambia utente
+            if 'files_processati_sessione' in st.session_state:
+                st.session_state.files_processati_sessione = set()
             
             # Cancella sessione
             st.session_state.clear()
@@ -3470,6 +3478,12 @@ uploaded_files = st.file_uploader(
     label_visibility="collapsed"
 )
 
+# Bottone Reset Upload
+if st.button("🔄 Reset upload (pulisci cache sessione)", key="reset_upload_cache"):
+    st.session_state.files_processati_sessione = set()
+    st.success("✅ Cache pulita! Puoi ricaricare i file.")
+    st.rerun()
+
 
 if 'files_processati_sessione' not in st.session_state:
     st.session_state.files_processati_sessione = set()
@@ -3480,16 +3494,30 @@ if 'files_con_errori' not in st.session_state:
 
 # 🔥 GESTIONE FILE CARICATI
 if uploaded_files:
-    # File già processati: solo da Supabase + sessione
+    # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
     try:
         user_id = st.session_state.user_data["id"]
-        response = supabase.table("fatture").select("file_origine", count="exact").eq("user_id", user_id).execute()
-        file_su_supabase = set([row["file_origine"] for row in response.data])
+        response = (
+            supabase.table("fatture")
+            .select("file_origine")
+            .eq("user_id", user_id)  # ← OBBLIGATORIO: solo file di questo utente
+            .eq("status", "completato")  # ← ignora file falliti/test
+            .execute()
+        )
+        file_su_supabase = {row["file_origine"] for row in response.data if row.get("file_origine")}
+        
+        # DEBUG TEMPORANEO - rimuovi dopo test
+        st.write(f"🔍 DEBUG: File su Supabase per questo utente: {len(file_su_supabase)}")
+        
     except Exception as e:
-        logger.exception(f"Errore lettura file già processati da Supabase per user_id={st.session_state.user_data.get('id')}")
+        logger.exception(f"Errore caricamento file da DB per user_id={st.session_state.user_data.get('id')}")
+        st.error(f"Errore caricamento file da DB: {e}")
         file_su_supabase = set()
 
 
+    # DEBUG TEMPORANEO
+    st.write(f"🔍 DEBUG: File in sessione corrente: {len(st.session_state.files_processati_sessione)}")
+    
     tutti_file_processati = st.session_state.files_processati_sessione | file_su_supabase
     
     file_unici = []
@@ -3507,10 +3535,15 @@ if uploaded_files:
     file_gia_processati = []
     
     for file in file_unici:
-        if file.name in tutti_file_processati:
+        filename = file.name
+        
+        # Controlla se già processato (DB o sessione)
+        if filename in file_su_supabase or filename in st.session_state.files_processati_sessione:
             file_gia_processati.append(file)
         else:
             file_nuovi.append(file)
+            # Aggiungilo subito alla sessione per evitare riprocessamento
+            st.session_state.files_processati_sessione.add(filename)
     
     # Messaggio semplice di conferma upload (senza lista ridondante)
     if file_nuovi:
