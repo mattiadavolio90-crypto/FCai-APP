@@ -154,19 +154,27 @@ st.set_page_config(
 # ============================================
 st.markdown("""
 <style>
-    /* Nascondi footer Streamlit */
-    footer {
+    /* Nascondi footer Streamlit - TUTTI I SELETTORI */
+    footer,
+    .stApp footer,
+    div[role="contentinfo"],
+    [data-testid="stFooter"] {
         visibility: hidden !important;
         display: none !important;
+        height: 0 !important;
+        overflow: hidden !important;
     }
     
     /* Nascondi "Created by" e "Hosted with" */
-    [data-testid="stStatusWidget"] {
+    [data-testid="stStatusWidget"],
+    .stStatusWidget {
         display: none !important;
     }
     
     /* Nascondi link profilo e branding */
-    div[data-testid="stDecoration"] {
+    div[data-testid="stDecoration"],
+    [data-testid="stToolbar"],
+    .stDecoration {
         display: none !important;
     }
     
@@ -176,43 +184,79 @@ st.markdown("""
         display: none !important;
     }
     
-    /* Nascondi toolbar */
-    header[data-testid="stHeader"] {
+    /* Nascondi toolbar e header */
+    header[data-testid="stHeader"],
+    .stApp > header,
+    div[data-testid="stToolbar"] {
+        display: none !important;
+    }
+    
+    /* Nascondi ViewerBadge (Made with Streamlit) */
+    .viewerBadge_container__1QSob,
+    .viewerBadge_link__1S137,
+    .styles_viewerBadge__1yB5_,
+    [class*="viewerBadge"],
+    a[href*="streamlit.io"],
+    a[target="_blank"][rel*="noopener"] {
         display: none !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# JavaScript aggressivo per rimuovere elementi branding
+# JavaScript SUPER aggressivo per rimuovere elementi branding
 st.markdown("""
 <script>
 (function() {
     function hideStreamlitBranding() {
-        // Rimuovi tutti gli elementi del footer
-        const footer = document.getElementsByTagName('footer')[0];
-        if (footer) footer.remove();
+        // Rimuovi TUTTI i footer
+        document.querySelectorAll('footer').forEach(el => el.remove());
+        document.querySelectorAll('[role="contentinfo"]').forEach(el => el.remove());
+        document.querySelectorAll('[data-testid="stFooter"]').forEach(el => el.remove());
         
         // Rimuovi status widget
         document.querySelectorAll('[data-testid="stStatusWidget"]').forEach(el => el.remove());
         
         // Rimuovi decorazioni
         document.querySelectorAll('[data-testid="stDecoration"]').forEach(el => el.remove());
+        document.querySelectorAll('[data-testid="stToolbar"]').forEach(el => el.remove());
         
         // Rimuovi header
         document.querySelectorAll('header[data-testid="stHeader"]').forEach(el => el.remove());
+        
+        // Rimuovi ViewerBadge (Made with Streamlit)
+        document.querySelectorAll('[class*="viewerBadge"]').forEach(el => el.remove());
+        document.querySelectorAll('a[href*="streamlit.io"]').forEach(el => {
+            if (el.textContent.includes('Streamlit') || el.textContent.includes('Made with')) {
+                el.remove();
+            }
+        });
+        
+        // Cerca e rimuovi qualsiasi elemento che contiene "Made with" o "Hosted with"
+        document.querySelectorAll('*').forEach(el => {
+            if (el.textContent && (el.textContent.includes('Made with Streamlit') || 
+                el.textContent.includes('Hosted with Streamlit'))) {
+                el.remove();
+            }
+        });
     }
     
     // Esegui subito
     hideStreamlitBranding();
     
-    // Ripeti ogni 300ms
-    setInterval(hideStreamlitBranding, 300);
+    // Ripeti ogni 200ms (più frequente)
+    setInterval(hideStreamlitBranding, 200);
     
     // Observer per nuovi elementi
-    new MutationObserver(hideStreamlitBranding).observe(document.body, {
+    const observer = new MutationObserver(hideStreamlitBranding);
+    observer.observe(document.body, {
         childList: true,
-        subtree: true
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'data-testid']
     });
+    
+    // Esegui anche su DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', hideStreamlitBranding);
 })();
 </script>
 """, unsafe_allow_html=True)
