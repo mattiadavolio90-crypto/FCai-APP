@@ -636,18 +636,26 @@ if user.get('email') in ADMIN_EMAILS:
     with col4:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Logout", type="primary", use_container_width=True, key="logout_btn"):
-            # Imposta flag per evitare auto-login dal cookie
-            st.session_state.logout_in_progress = True
-            
-            # Cancella il cookie per evitare auto-login al prossimo refresh
             try:
+                # Cancella cookie
                 cookie_manager = stx.CookieManager(key="cookie_manager_logout")
                 cookie_manager.delete("user_email")
             except Exception:
                 logger.exception('Errore cancellazione cookie al logout')
             
+            # Pulisci TUTTA la sessione tranne logout_in_progress
+            keys_to_delete = [k for k in list(st.session_state.keys()) if k != 'logout_in_progress']
+            for key in keys_to_delete:
+                del st.session_state[key]
+            
+            # Reimposta stati base
             st.session_state.logged_in = False
             st.session_state.user_data = None
+            st.session_state.logout_in_progress = True
+            
+            # Invalida cache
+            st.cache_data.clear()
+            
             st.rerun()
 else:
     with col2:
@@ -658,18 +666,26 @@ else:
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Logout", type="primary", use_container_width=True, key="logout_btn_alt"):
-            # Imposta flag per evitare auto-login dal cookie
-            st.session_state.logout_in_progress = True
-            
-            # Cancella il cookie per evitare auto-login al prossimo refresh
             try:
+                # Cancella cookie
                 cookie_manager = stx.CookieManager(key="cookie_manager_logout2")
                 cookie_manager.delete("user_email")
             except Exception:
                 logger.exception('Errore cancellazione cookie al logout')
             
+            # Pulisci TUTTA la sessione tranne logout_in_progress
+            keys_to_delete = [k for k in list(st.session_state.keys()) if k != 'logout_in_progress']
+            for key in keys_to_delete:
+                del st.session_state[key]
+            
+            # Reimposta stati base
             st.session_state.logged_in = False
             st.session_state.user_data = None
+            st.session_state.logout_in_progress = True
+            
+            # Invalida cache
+            st.cache_data.clear()
+            
             st.rerun()
 
 
