@@ -305,40 +305,45 @@ except Exception as e:
 
 # RIPRISTINO SESSIONE DA COOKIE (dopo inizializzazione Supabase)
 try:
+    from datetime import datetime, timedelta
+    
     # Inizializza logged_in se non esiste
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
     
-    # Inizializza logout_in_progress se non esiste
-    if 'logout_in_progress' not in st.session_state:
-        st.session_state.logout_in_progress = False
+    # Inizializza logout_timestamp se non esiste
+    if 'logout_timestamp' not in st.session_state:
+        st.session_state.logout_timestamp = None
     
-    # Se è appena stato fatto logout, cancella il cookie e NON ripristinare
-    if st.session_state.logout_in_progress:
+    # Controlla se è appena stato fatto logout (ultimi 5 secondi)
+    logout_recente = False
+    if st.session_state.logout_timestamp:
+        tempo_trascorso = (datetime.now() - st.session_state.logout_timestamp).total_seconds()
+        logout_recente = tempo_trascorso < 5  # Blocca ripristino per 5 secondi
+        logger.debug(f"Logout recente: {logout_recente}, tempo: {tempo_trascorso}s")
+    
+    # Se logout recente, cancella cookie e NON ripristinare
+    if logout_recente:
         try:
-            from datetime import datetime, timedelta
             cookie_manager = stx.CookieManager(key="cookie_manager_clear")
-            # Imposta cookie a vuoto con scadenza passata per forzare cancellazione
             past_time = datetime.now() - timedelta(days=1)
             cookie_manager.set("user_email", "", expires_at=past_time)
             cookie_manager.delete("user_email")
-            logger.info("Cookie cancellato dopo logout")
+            logger.info("Cookie cancellato dopo logout recente")
         except Exception:
             logger.exception('Errore cancellazione cookie post-logout')
-        
-        # Reset del flag solo DOPO aver cancellato il cookie
-        st.session_state.logout_in_progress = False
-    # Ripristina sessione da cookie SOLO se NON è già loggato
+    # Ripristina sessione da cookie SOLO se NON è loggato E NON logout recente
     elif not st.session_state.logged_in:
         cookie_manager = stx.CookieManager(key="cookie_manager_init")
         user_email_cookie = cookie_manager.get("user_email")
         logger.debug(f"Cookie recuperato all'avvio: {user_email_cookie}")
-        if user_email_cookie:
+        if user_email_cookie and user_email_cookie.strip():  # Verifica che non sia vuoto
             try:
                 response = supabase.table("users").select("*").eq("email", user_email_cookie).eq("attivo", True).execute()
                 if response and getattr(response, 'data', None):
                     st.session_state.logged_in = True
                     st.session_state.user_data = response.data[0]
+                    st.session_state.logout_timestamp = None  # Reset timestamp
                     logger.debug(f"Sessione ripristinata per: {user_email_cookie}")
             except Exception:
                 logger.exception('Errore recupero utente da cookie')
@@ -657,15 +662,15 @@ if user.get('email') in ADMIN_EMAILS:
             except Exception:
                 logger.exception('Errore cancellazione cookie al logout')
             
-            # Pulisci TUTTA la sessione tranne logout_in_progress
-            keys_to_delete = [k for k in list(st.session_state.keys()) if k != 'logout_in_progress']
+            # Pulisci TUTTA la sessione tranne logout_timestamp
+            keys_to_delete = [k for k in list(st.session_state.keys()) if k != 'logout_timestamp']
             for key in keys_to_delete:
                 del st.session_state[key]
             
             # Reimposta stati base
             st.session_state.logged_in = False
             st.session_state.user_data = None
-            st.session_state.logout_in_progress = True
+            st.session_state.logout_timestamp = datetime.now()  # Timestamp logout
             
             # Invalida cache
             st.cache_data.clear()
@@ -692,15 +697,15 @@ else:
             except Exception:
                 logger.exception('Errore cancellazione cookie al logout')
             
-            # Pulisci TUTTA la sessione tranne logout_in_progress
-            keys_to_delete = [k for k in list(st.session_state.keys()) if k != 'logout_in_progress']
+            # Pulisci TUTTA la sessione tranne logout_timestamp
+            keys_to_delete = [k for k in list(st.session_state.keys()) if k != 'logout_timestamp']
             for key in keys_to_delete:
                 del st.session_state[key]
             
             # Reimposta stati base
             st.session_state.logged_in = False
             st.session_state.user_data = None
-            st.session_state.logout_in_progress = True
+            st.session_state.logout_timestamp = datetime.now()  # Timestamp logout
             
             # Invalida cache
             st.cache_data.clear()
