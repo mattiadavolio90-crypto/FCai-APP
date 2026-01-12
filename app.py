@@ -331,6 +331,29 @@ except Exception:
     logger.exception('Errore controllo cookie sessione')
 
 
+# ============================================
+# VERIFICA VALIDITÀ SESSIONE CON TIMESTAMP
+# ============================================
+# Ogni sessione deve avere un timestamp. Senza timestamp = sessione non valida
+if st.session_state.get('logged_in', False):
+    session_timestamp = st.session_state.get('session_timestamp', None)
+    
+    if not session_timestamp:
+        # Sessione senza timestamp = invalida, probabilmente vecchia
+        logger.warning("⚠️ Sessione logged_in trovata SENZA timestamp - pulizia forzata")
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.session_state.logged_in = False
+    else:
+        # Controlla se sessione è troppo vecchia (più di 12 ore)
+        current_time = time.time()
+        if (current_time - session_timestamp) > 43200:  # 12 ore
+            logger.warning(f"⚠️ Sessione scaduta ({(current_time - session_timestamp)/3600:.1f} ore)")
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.session_state.logged_in = False
+
+
 # ============================================================
 # FUNZIONI AUTENTICAZIONE (SPOSTATA IN services/auth_service.py)
 # ============================================================
@@ -460,9 +483,10 @@ def mostra_pagina_login():
                         if user:
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
+                            st.session_state.session_timestamp = time.time()  # ← TIMESTAMP SESSIONE
                             
                             # Cookie disabilitati - sessione solo in memoria
-                            logger.info(f"Login effettuato per: {user.get('email')}")
+                            logger.info(f"✅ Login effettuato per: {user.get('email')} - timestamp: {st.session_state.session_timestamp}")
                             
                             st.success("✅ Accesso effettuato!")
                             time.sleep(1)
@@ -504,6 +528,7 @@ def mostra_pagina_login():
                 if user:
                     st.session_state.logged_in = True
                     st.session_state.user_data = user
+                    st.session_state.session_timestamp = time.time()  # ← TIMESTAMP SESSIONE
                     st.success("✅ Password aggiornata! Accesso automatico...")
                     time.sleep(1.5)
                     st.rerun()
