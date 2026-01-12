@@ -3351,17 +3351,11 @@ if not df_cache.empty:
                         if 'check_conferma_svuota' in st.session_state:
                             del st.session_state.check_conferma_svuota
                         
-                        # 🔥 FLAG FORCE EMPTY: Indica che il DB è vuoto, forza DataFrame vuoto fino a nuovo upload
-                        st.session_state.force_empty_until_upload = True
-                        
-                        # 🔥 RESET FILE UPLOADER: Cambia chiave per forzare reset widget
-                        st.session_state.uploader_key = st.session_state.get('uploader_key', 0) + 1
-                        
-                        # 🔥 TRIPLE CLEAR: Ultima pulizia cache prima del rerun
+                        # 🔥 FLAG HIDE UPLOADER: Nascondi uploader dopo eliminazione totale
+                        st.session_state.hide_uploader = True
+                        st.session_state.files_processati_sessione = set()
                         st.cache_data.clear()
-                        invalida_cache_memoria()
-                        
-                        time.sleep(0.5)
+                        st.success("✅ Eliminato tutto!")
                         st.rerun()
                     else:
                         st.error(f"❌ Errore: {result['error']}")
@@ -3417,25 +3411,39 @@ if not df_cache.empty:
         st.caption("⚠️ L'eliminazione è immediata e irreversibile")
 
 
-# File uploader sempre visibile (solo Supabase, no JSON)
-# 🔥 Usa chiave dinamica per forzare reset dopo eliminazione massiva
-uploader_key = st.session_state.get('uploader_key', 0)
-uploaded_files = st.file_uploader(
-    "Carica file XML, PDF o Immagini", 
-    accept_multiple_files=True, 
-    type=['xml', 'pdf', 'jpg', 'jpeg', 'png'], 
-    label_visibility="collapsed",
-    key=f"file_uploader_{uploader_key}"  # Chiave dinamica per reset
-)
 
-# Bottone Reset Upload
-if st.button("🔄 Reset upload (pulisci cache sessione)", key="reset_upload_cache"):
-    st.session_state.files_processati_sessione = set()
-    # 🔥 Rimuovi flag force_empty per sbloccare caricamento
-    if 'force_empty_until_upload' in st.session_state:
-        del st.session_state.force_empty_until_upload
-    st.success("✅ Cache pulita! Puoi ricaricare i file.")
-    st.rerun()
+# === GESTIONE VISIBILITÀ UPLOADER ===
+if st.session_state.get("hide_uploader", False):
+    st.warning("⚠️ Hai eliminato tutte le fatture.")
+    if st.button("🔄 Ricarica Pagina", key="refresh_page_btn"):
+        st.session_state.hide_uploader = False
+        st.session_state.uploader_key = st.session_state.get("uploader_key", 0) + 1
+        st.components.v1.html(
+            """
+            <script>
+            window.parent.location.reload();
+            </script>
+            """,
+            height=0
+        )
+else:
+    uploader_key = st.session_state.get('uploader_key', 0)
+    uploaded_files = st.file_uploader(
+        "Carica file XML, PDF o Immagini", 
+        accept_multiple_files=True, 
+        type=['xml', 'pdf', 'jpg', 'jpeg', 'png'], 
+        label_visibility="collapsed",
+        key=f"file_uploader_{uploader_key}"  # Chiave dinamica per reset
+    )
+
+    # Bottone Reset Upload
+    if st.button("🔄 Reset upload (pulisci cache sessione)", key="reset_upload_cache"):
+        st.session_state.files_processati_sessione = set()
+        # 🔥 Rimuovi flag force_empty per sbloccare caricamento
+        if 'force_empty_until_upload' in st.session_state:
+            del st.session_state.force_empty_until_upload
+        st.success("✅ Cache pulita! Puoi ricaricare i file.")
+        st.rerun()
 
 
 if 'files_processati_sessione' not in st.session_state:
