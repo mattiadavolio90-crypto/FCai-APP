@@ -235,10 +235,10 @@ st.markdown("""
         });
         document.querySelectorAll('[role="contentinfo"]').forEach(el => el.remove());
         document.querySelectorAll('[data-testid="stFooter"]').forEach(el => el.remove());
-        
-        // Rimuovi status widget
-        document.querySelectorAll('[data-testid="stStatusWidget"]').forEach(el => el.remove());
-        
+            st.session_state.force_empty_until_upload = False
+            st.session_state.files_processati_sessione = set()
+            st.cache_data.clear()
+            st.success("✅ Reset completato! Ora clicca la X sui file sopra per pulirli.")
         // Rimuovi decorazioni
         document.querySelectorAll('[data-testid="stDecoration"]').forEach(el => el.remove());
         document.querySelectorAll('[data-testid="stToolbar"]').forEach(el => el.remove());
@@ -1312,6 +1312,9 @@ def mostra_statistiche(df_completo):
             # ============================================================
             if righe_da_classificare == 0:
                 st.warning("⚠️ Nessun prodotto da classificare")
+            # Rimuovi il flag automaticamente quando tutti i file sono stati rimossi (dopo aver cliccato la X)
+        if not uploaded_files and st.session_state.get("force_empty_until_upload"):
+            st.session_state.force_empty_until_upload = False
                 st.stop()
             
             # ============================================================
