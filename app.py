@@ -99,6 +99,8 @@ from services.auth_service import (
     verify_and_migrate_password,
     verifica_credenziali,
     invia_codice_reset,
+    registra_logout_utente,
+    verifica_sessione_valida,
 )
 
 from services.invoice_service import (
@@ -363,10 +365,17 @@ if st.session_state.get('force_logout', False):
 # Ogni sessione deve avere un timestamp. Senza timestamp = sessione non valida
 if st.session_state.get('logged_in', False):
     session_timestamp = st.session_state.get('session_timestamp', None)
+    user_email = st.session_state.get('user_data', {}).get('email')
     
     if not session_timestamp:
         # Sessione senza timestamp = invalida, probabilmente vecchia
         logger.warning("⚠️ Sessione logged_in trovata SENZA timestamp - pulizia forzata")
+        st.session_state.clear()
+        st.session_state.logged_in = False
+        st.session_state.force_logout = True
+    elif user_email and not verifica_sessione_valida(user_email, session_timestamp):
+        # VERIFICA CONTRO DATABASE: se l'utente ha fatto logout dopo questo login, invalida sessione
+        logger.warning(f"🚨 Sessione INVALIDATA per {user_email} - logout nel DB più recente del login")
         st.session_state.clear()
         st.session_state.logged_in = False
         st.session_state.force_logout = True
@@ -670,6 +679,11 @@ if user.get('email') in ADMIN_EMAILS:
     with col4:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Logout", type="primary", use_container_width=True, key="logout_btn"):
+            # REGISTRA LOGOUT NEL DATABASE
+            user_email = st.session_state.get('user_data', {}).get('email')
+            if user_email:
+                registra_logout_utente(user_email)
+            
             # Cancella sessione
             st.session_state.clear()
             st.session_state.logged_in = False
@@ -694,6 +708,11 @@ else:
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Logout", type="primary", use_container_width=True, key="logout_btn_alt"):
+            # REGISTRA LOGOUT NEL DATABASE
+            user_email = st.session_state.get('user_data', {}).get('email')
+            if user_email:
+                registra_logout_utente(user_email)
+            
             # Cancella sessione
             st.session_state.clear()
             st.session_state.logged_in = False
