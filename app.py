@@ -117,6 +117,31 @@ from services.db_service import (
 )
 
 
+# ============================================================
+# 🔄 HOT RELOAD AUTOMATICO MODULI (Development Mode)
+# ============================================================
+import importlib
+import sys
+
+# Hot reload automatico per development
+if st.secrets.get("environment", {}).get("mode", "production") != "production":
+    # Lista tutti i moduli in services/
+    services_modules = [
+        'services.db_service',
+        'services.invoice_service',
+        'services.auth_service',
+        'services.ai_service',
+        'utils.text_utils',
+        'utils.validation',
+        'utils.formatters',
+        'config.constants'
+    ]
+    
+    for module_name in services_modules:
+        if module_name in sys.modules:
+            importlib.reload(sys.modules[module_name])
+            st.write(f"🔄 Reloaded: {module_name}")  # Debug, rimuovere dopo test
+
 
 # ============================================================
 # 🔍 ANALISI FATTURE AI - VERSIONE 3.2 FINAL COMPLETA
@@ -216,6 +241,18 @@ st.markdown("""
         background: white;
         z-index: 999999;
         pointer-events: none;
+    }
+    
+    /* ✂️ RIDUCI SPAZIO SUPERIORE APP */
+    .main > div {
+        padding-top: 1rem !important;
+    }
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+    }
+    section.main > div {
+        padding-top: 1rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -561,6 +598,18 @@ def mostra_pagina_login():
         [data-testid="manage-app-button"] { display: none !important; }
         [data-testid="stDecoration"] { display: none !important; }
         footer { visibility: hidden !important; }
+        
+        /* ✂️ RIDUCI SPAZIO SUPERIORE LOGIN */
+        .main > div {
+            padding-top: 1rem !important;
+        }
+        .block-container {
+            padding-top: 2rem !important;
+            padding-bottom: 2rem !important;
+        }
+        section.main > div {
+            padding-top: 1rem !important;
+        }
         </style>
         <script>
         setInterval(function() {
@@ -770,7 +819,8 @@ with col1:
     background-clip: text;">Analisi Fatture AI</span>
 </h1>
 """, unsafe_allow_html=True)
-    st.caption(f"👤 {user.get('nome_ristorante', 'Utente')} | {st.session_state.user_data.get('email', 'N/A')}")
+    # Usa la variabile user (già verificata) invece di st.session_state.user_data
+    st.caption(f"👤 {user.get('nome_ristorante', 'Utente')} | {user.get('email', 'N/A')}")
 
 
 # Pulsanti diversi per admin e clienti
@@ -2087,13 +2137,12 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             # 🔧 FIX: Reset index prima di rinominare colonne (evita errore "Columns must be same length")
             df_export = df_export.reset_index(drop=True)
             
-            # Prepara nomi colonne per export
+            # 🚫 RIMUOVI colonna Listino dal DataFrame (non serve nell'export)
+            df_export = df_export.drop(columns=['PrezzoStandard'], errors='ignore')
+            
+            # Prepara nomi colonne per export (SENZA Listino)
             col_names = ['File', 'Data', 'Fornitore', 'Descrizione',
                         'Quantità', 'U.M.', 'Prezzo Unit.', 'IVA %', 'Totale (€)', 'Categoria']
-            
-            # Aggiungi prezzo_standard se presente
-            if 'PrezzoStandard' in df_export.columns:
-                col_names.append('LISTINO')
             
             # ✅ VERIFICA: Numero colonne deve corrispondere
             if len(df_export.columns) == len(col_names):
