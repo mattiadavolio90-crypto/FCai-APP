@@ -3426,14 +3426,14 @@ if st.session_state.get("hide_uploader", False):
             """,
             height=0
         )
+    uploaded_files = None  # Fix NameError: uploaded_files sempre definito
 else:
-    uploader_key = st.session_state.get('uploader_key', 0)
     uploaded_files = st.file_uploader(
-        "Carica file XML, PDF o Immagini", 
-        accept_multiple_files=True, 
-        type=['xml', 'pdf', 'jpg', 'jpeg', 'png'], 
+        "Carica file XML, PDF o Immagini",
+        accept_multiple_files=True,
+        type=['xml', 'pdf', 'jpg', 'jpeg', 'png'],
         label_visibility="collapsed",
-        key=f"file_uploader_{uploader_key}"  # Chiave dinamica per reset
+        key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"  # Chiave dinamica per reset
     )
 
     # Bottone Reset Upload
