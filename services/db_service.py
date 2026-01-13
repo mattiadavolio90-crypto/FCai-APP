@@ -18,7 +18,9 @@ import streamlit as st
 # Import config
 from config.constants import CATEGORIE_SPESE_GENERALI
 
-logger = logging.getLogger(__name__)
+# Logger centralizzato
+from config.logger_setup import get_logger
+logger = get_logger('db')
 
 
 def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supabase_client=None):

@@ -646,15 +646,30 @@ def mostra_pagina_login():
             email = st.text_input("📧 Email", placeholder="tua@email.com")
             password = st.text_input("🔑 Password", type="password", placeholder="Password")
             
-            # CSS per bottone blu chiaro
+            # CSS per bottone blu chiaro e fix spazio verticale
             st.markdown("""
                 <style>
                 div[data-testid="stFormSubmitButton"] button {
                     background-color: #0ea5e9 !important;
                     color: white !important;
+                    margin-bottom: 100px !important;
                 }
                 div[data-testid="stFormSubmitButton"] button:hover {
                     background-color: #0284c7 !important;
+                }
+                /* Fix altezza pagina per vedere tutto */
+                .main .block-container {
+                    max-height: none !important;
+                    padding-bottom: 150px !important;
+                }
+                div[data-testid="stForm"] {
+                    max-height: none !important;
+                    height: auto !important;
+                    padding-bottom: 50px !important;
+                }
+                section[data-testid="stSidebar"] ~ div {
+                    max-height: none !important;
+                    overflow-y: auto !important;
                 }
                 </style>
             """, unsafe_allow_html=True)
@@ -1531,7 +1546,7 @@ def mostra_statistiche(df_completo):
         data_fine_filtro = fine_anno_scorso
         label_periodo = f"Anno scorso ({inizio_anno_scorso.strftime('%d/%m/%Y')} → {fine_anno_scorso.strftime('%d/%m/%Y')})"
     
-    else:  # Periodo Personalizzato
+    elif periodo_selezionato == "⚙️ Periodo Personalizzato":
         st.markdown("##### Seleziona Range Date")
         col_da, col_a = st.columns(2)
         
@@ -1569,10 +1584,10 @@ def mostra_statistiche(df_completo):
         
         label_periodo = f"{data_inizio_filtro.strftime('%d/%m/%Y')} → {data_fine_filtro.strftime('%d/%m/%Y')}"
     
-    # Fallback se data_inizio_filtro è None (non dovrebbe mai accadere)
-    if data_inizio_filtro is None:
+    else:
+        # Default: Mese in Corso
         data_inizio_filtro = inizio_mese
-        label_periodo = "Periodo non valido"
+        label_periodo = f"Mese in corso ({inizio_mese.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
     
     # APPLICA FILTRO AI DATI
     df_food_completo["Data_DT"] = pd.to_datetime(df_food_completo["DataDocumento"], errors='coerce').dt.date
@@ -1591,16 +1606,19 @@ def mostra_statistiche(df_completo):
     df_completo_filtrato = df_completo[df_completo['DataDocumento'].isin(df_food['DataDocumento'])]
     num_doc_filtrati = df_completo_filtrato['FileOrigine'].nunique()
     
-    # Mostra info periodo con box ben visibile (evita troncamento)
-    info_testo = f"🔍 **{label_periodo}** ({giorni} giorni) | Righe F&B: **{len(df_food):,}** | Righe Totali: {stats_totali['num_righe']:,} | Fatture: {num_doc_filtrati} di {stats_totali['num_uniche']}"
+    # Mostra info periodo con box ben visibile (stile simile ai box blu)
+    info_testo = f"🗓️ {label_periodo} ({giorni} giorni) | 🍽️ Righe F&B: {len(df_food):,} | 📊 Righe Totali: {stats_totali['num_righe']:,} | 📄 Fatture: {num_doc_filtrati} di {stats_totali['num_uniche']}"
     st.markdown(f"""
     <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); 
-                padding: 15px 20px; 
-                border-radius: 10px; 
-                border-left: 5px solid #f59e0b;
-                margin-bottom: 15px;
-                font-size: 14px;
-                line-height: 1.6;">
+                padding: 20px 25px; 
+                border-radius: 12px; 
+                border: 3px solid #f59e0b;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                margin-bottom: 20px;
+                font-size: 15px;
+                font-weight: 500;
+                line-height: 1.8;
+                transition: all 0.3s ease;">
         {info_testo}
     </div>
     """, unsafe_allow_html=True)
@@ -1956,7 +1974,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         altezza_dinamica = min(max(num_righe * 35 + 50, 200), 500)
 
         # ===== CARICA CATEGORIE DINAMICHE =====
-        categorie_disponibili = carica_categorie_da_db()
+        categorie_disponibili = carica_categorie_da_db(supabase_client=supabase)
         
         # Rimuovi TUTTI i valori non validi (None, vuoti, solo spazi)
         categorie_disponibili = [
@@ -2423,11 +2441,14 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     border-left: 4px solid #dc3545;
                     padding: 15px;
                     border-radius: 5px;
-                    height: 110px;
+                    min-height: 130px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
                 ">
                     <div style="font-size: 14px; color: #666; font-weight: 500;">Sconti Applicati</div>
                     <div style="font-size: 24px; font-weight: bold; margin: 8px 0;">{} righe</div>
-                    <div style="font-size: 16px; color: #dc3545;">-€{:.2f}</div>
+                    <div style="font-size: 16px; color: #dc3545; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">-€{:.2f}</div>
                 </div>
                 """.format(len(df_sconti), totale_risparmiato if totale_risparmiato > 0 else 0), 
                 unsafe_allow_html=True)
@@ -2439,11 +2460,14 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     border-left: 4px solid #0d6efd;
                     padding: 15px;
                     border-radius: 5px;
-                    height: 110px;
+                    min-height: 130px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
                 ">
                     <div style="font-size: 14px; color: #666; font-weight: 500;">Omaggi Ricevuti</div>
                     <div style="font-size: 24px; font-weight: bold; margin: 8px 0;">{} righe</div>
-                    <div style="font-size: 16px; color: #999;">Prodotti gratuiti</div>
+                    <div style="font-size: 14px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Prodotti gratuiti</div>
                 </div>
                 """.format(len(df_omaggi)), 
                 unsafe_allow_html=True)
@@ -2455,13 +2479,16 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     border-left: 4px solid #28a745;
                     padding: 15px;
                     border-radius: 5px;
-                    height: 110px;
+                    min-height: 130px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
                 ">
                     <div style="font-size: 14px; color: #666; font-weight: 500;">Totale Risparmiato</div>
                     <div style="font-size: 24px; font-weight: bold; margin: 8px 0; color: #28a745;">€{:.2f}</div>
-                    <div style="font-size: 16px; color: #999;">{}</div>
+                    <div style="font-size: 12px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{}">{}</div>
                 </div>
-                """.format(totale_risparmiato if totale_risparmiato > 0 else 0, label_periodo), 
+                """.format(totale_risparmiato if totale_risparmiato > 0 else 0, label_periodo, label_periodo), 
                 unsafe_allow_html=True)
             
             # ============================================================
@@ -3303,7 +3330,6 @@ if not df_cache.empty:
 """, unsafe_allow_html=True)
         
         st.markdown("---")
-        st.markdown("**Fatture nel tuo account:**")
         
         # Raggruppa per file origine per creare summary
         fatture_summary = df_cache.groupby('FileOrigine').agg({
@@ -3322,115 +3348,116 @@ if not df_cache.empty:
         # 🔍 DEBUG TOOL: Rimosso - Usa Upload Events in Admin Panel per diagnostica
         
         # 🗑️ PULSANTE SVUOTA TUTTO CON CONFERMA INLINE
-        st.markdown("### 🗑️ Eliminazione Massiva")
-        
-        col_check, col_btn = st.columns([3, 1])
-        
-        with col_check:
-            conferma_check = st.checkbox(
-                "⚠️ **Confermo di voler eliminare TUTTE le fatture**",
-                key="check_conferma_svuota",
-                help="Questa azione è irreversibile"
-            )
-        
-        with col_btn:
-            if st.button(
-                "🗑️ ELIMINA TUTTO", 
-                type="primary" if conferma_check else "secondary",
-                disabled=not conferma_check,
-                use_container_width=True,
-                key="btn_svuota_definitivo"
-            ):
-                with st.spinner("🗑️ Eliminazione in corso..."):
-                    # Progress bar per UX
-                    progress = st.progress(0)
-                    progress.progress(20, text="Eliminazione da Supabase...")
-                    
-                    result = elimina_tutte_fatture(user_id)
-                    
-                    # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
-                    invalida_cache_memoria()  # Reset memoria AI
-                    st.cache_data.clear()  # Reset cache Streamlit (prima chiamata)
-                    
-                    # 🔥 RESET SESSION: Reinizializza set vuoti (non solo clear)
-                    st.session_state.files_processati_sessione = set()
-                    st.session_state.files_con_errori = set()
-                    
-                    progress.progress(40, text="Pulizia file JSON locali...")
-                    
-                    # HARD RESET: Elimina file JSON obsoleti
-                    json_files = ['fattureprocessate.json', 'fatture.json', 'data.json']
-                    for json_file in json_files:
-                        if os.path.exists(json_file):
-                            try:
-                                os.remove(json_file)
-                                logger.info(f"🗑️ Rimosso file JSON obsoleto: {json_file}")
-                            except Exception as e:
-                                logger.warning(f"⚠️ Impossibile rimuovere {json_file}: {e}")
-                    
-                    progress.progress(60, text="Pulizia cache Streamlit...")
-                    
-                    # HARD RESET: Pulisci TUTTE le cache
-                    st.cache_data.clear()
-                    try:
-                        st.cache_resource.clear()
-                    except:
-                        pass
-                    
-                    progress.progress(80, text="Reset session state...")
-                    
-                    # HARD RESET: Rimuovi session state specifici (mantieni login)
-                    keys_to_remove = [k for k in st.session_state.keys() 
-                                     if k not in ['user_data', 'logged_in', 'check_conferma_svuota']]
-                    for key in keys_to_remove:
+        # Solo admin e impersonificati vedono eliminazione massiva
+        if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+            st.markdown("### 🗑️ Eliminazione Massiva")
+            
+            col_check, col_btn = st.columns([3, 1])
+            
+            with col_check:
+                conferma_check = st.checkbox(
+                    "⚠️ **Confermo di voler eliminare TUTTE le fatture**",
+                    key="check_conferma_svuota",
+                    help="Questa azione è irreversibile"
+                )
+            
+            with col_btn:
+                if st.button(
+                    "🗑️ ELIMINA TUTTO", 
+                    type="primary" if conferma_check else "secondary",
+                    disabled=not conferma_check,
+                    use_container_width=True,
+                    key="btn_svuota_definitivo"
+                ):
+                    with st.spinner("🗑️ Eliminazione in corso..."):
+                        # Progress bar per UX
+                        progress = st.progress(0)
+                        progress.progress(20, text="Eliminazione da Supabase...")
+                        
+                        result = elimina_tutte_fatture(user_id)
+                        
+                        # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
+                        invalida_cache_memoria()  # Reset memoria AI
+                        st.cache_data.clear()  # Reset cache Streamlit (prima chiamata)
+                        
+                        # 🔥 RESET SESSION: Reinizializza set vuoti (non solo clear)
+                        st.session_state.files_processati_sessione = set()
+                        st.session_state.files_con_errori = set()
+                        
+                        progress.progress(40, text="Pulizia file JSON locali...")
+                        
+                        # HARD RESET: Elimina file JSON obsoleti
+                        json_files = ['fattureprocessate.json', 'fatture.json', 'data.json']
+                        for json_file in json_files:
+                            if os.path.exists(json_file):
+                                try:
+                                    os.remove(json_file)
+                                    logger.info(f"🗑️ Rimosso file JSON obsoleto: {json_file}")
+                                except Exception as e:
+                                    logger.warning(f"⚠️ Impossibile rimuovere {json_file}: {e}")
+                        
+                        progress.progress(60, text="Pulizia cache Streamlit...")
+                        
+                        # HARD RESET: Pulisci TUTTE le cache
+                        st.cache_data.clear()
                         try:
-                            del st.session_state[key]
+                            st.cache_resource.clear()
                         except:
                             pass
-                    
-                    # 🔥 ULTIMA PULIZIA CACHE: Doppia invalidazione per sicurezza
-                    st.cache_data.clear()
-                    invalida_cache_memoria()
-                    
-                    progress.progress(100, text="Completato!")
-                    time.sleep(0.3)
-                    
-                    # Mostra risultato DENTRO lo spinner (indentazione corretta)
-                    if result["success"]:
-                        st.success(f"✅ **{result['fatture_eliminate']} fatture** eliminate! ({result['righe_eliminate']} prodotti)")
-                        st.info("🧹 **Hard Reset completato**: Cache, JSON locali e session state puliti")
                         
-                        # LOG AUDIT: Verifica immediata post-delete
-                        try:
-                            verify = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).execute()
-                            num_residue = len(verify.data) if verify.data else 0
-                            if num_residue == 0:
-                                logger.info(f"✅ DELETE VERIFIED: 0 righe rimaste per user_id={user_id}")
-                                st.success(f"✅ Verifica: Database pulito (0 righe)")
-                            else:
-                                logger.error(f"⚠️ DELETE INCOMPLETE: {num_residue} righe ancora presenti per user_id={user_id}")
-                                st.error(f"⚠️ Attenzione: {num_residue} righe ancora presenti (possibile problema RLS)")
-                        except Exception as e:
-                            logger.exception("Errore verifica post-delete")
+                        progress.progress(80, text="Reset session state...")
                         
-                        # Reset checkbox
-                        if 'check_conferma_svuota' in st.session_state:
-                            del st.session_state.check_conferma_svuota
+                        # HARD RESET: Rimuovi session state specifici (mantieni login)
+                        keys_to_remove = [k for k in st.session_state.keys() 
+                                         if k not in ['user_data', 'logged_in', 'check_conferma_svuota']]
+                        for key in keys_to_remove:
+                            try:
+                                del st.session_state[key]
+                            except:
+                                pass
                         
-                        # 🔥 FLAG HIDE UPLOADER: Nascondi uploader dopo eliminazione totale
-                        st.session_state.hide_uploader = True
-                        st.session_state.files_processati_sessione = set()
+                        # 🔥 ULTIMA PULIZIA CACHE: Doppia invalidazione per sicurezza
                         st.cache_data.clear()
-                        st.success("✅ Eliminato tutto!")
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Errore: {result['error']}")
-        
-        st.markdown("---")
+                        invalida_cache_memoria()
+                        
+                        progress.progress(100, text="Completato!")
+                        time.sleep(0.3)
+                        
+                        # Mostra risultato DENTRO lo spinner (indentazione corretta)
+                        if result["success"]:
+                            st.success(f"✅ **{result['fatture_eliminate']} fatture** eliminate! ({result['righe_eliminate']} prodotti)")
+                            st.info("🧹 **Hard Reset completato**: Cache, JSON locali e session state puliti")
+                            
+                            # LOG AUDIT: Verifica immediata post-delete
+                            try:
+                                verify = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).execute()
+                                num_residue = len(verify.data) if verify.data else 0
+                                if num_residue == 0:
+                                    logger.info(f"✅ DELETE VERIFIED: 0 righe rimaste per user_id={user_id}")
+                                    st.success(f"✅ Verifica: Database pulito (0 righe)")
+                                else:
+                                    logger.error(f"⚠️ DELETE INCOMPLETE: {num_residue} righe ancora presenti per user_id={user_id}")
+                                    st.error(f"⚠️ Attenzione: {num_residue} righe ancora presenti (possibile problema RLS)")
+                            except Exception as e:
+                                logger.exception("Errore verifica post-delete")
+                            
+                            # Reset checkbox
+                            if 'check_conferma_svuota' in st.session_state:
+                                del st.session_state.check_conferma_svuota
+                            
+                            # 🔥 FLAG HIDE UPLOADER: Nascondi uploader dopo eliminazione totale
+                            st.session_state.hide_uploader = True
+                            st.session_state.files_processati_sessione = set()
+                            st.cache_data.clear()
+                            st.success("✅ Eliminato tutto!")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Errore: {result['error']}")
+            
+            st.markdown("---")
         
         # ========== ELIMINA SINGOLA FATTURA ==========
         st.markdown("### 🗑️ Elimina Fattura Singola")
-        st.caption("Seleziona una fattura specifica per eliminarla usando il menu a tendina.")
         
         # Usa fatture_summary già creato sopra
         if len(fatture_summary) > 0:
@@ -3502,14 +3529,15 @@ else:
         key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"  # Chiave dinamica per reset
     )
 
-    # Bottone Reset Upload
-    if st.button("🔄 Reset upload (pulisci cache sessione)", key="reset_upload_cache"):
-        st.session_state.files_processati_sessione = set()
-        # 🔥 Rimuovi flag force_empty per sbloccare caricamento
-        if 'force_empty_until_upload' in st.session_state:
-            del st.session_state.force_empty_until_upload
-        st.success("✅ Cache pulita! Puoi ricaricare i file.")
-        st.rerun()
+    # Bottone Reset Upload (solo admin)
+    if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+        if st.button("🔄 Reset upload (pulisci cache sessione)", key="reset_upload_cache"):
+            st.session_state.files_processati_sessione = set()
+            # 🔥 Rimuovi flag force_empty per sbloccare caricamento
+            if 'force_empty_until_upload' in st.session_state:
+                del st.session_state.force_empty_until_upload
+            st.success("✅ Cache pulita! Puoi ricaricare i file.")
+            st.rerun()
 
 
 if 'files_processati_sessione' not in st.session_state:
@@ -3539,8 +3567,9 @@ if uploaded_files:
         )
         file_su_supabase = {row["file_origine"] for row in response.data if row.get("file_origine")}
         
-        # DEBUG TEMPORANEO - rimuovi dopo test
-        st.write(f"🔍 DEBUG: File su Supabase per questo utente: {len(file_su_supabase)}")
+        # DEBUG TEMPORANEO - rimuovi dopo test (solo admin)
+        if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+            st.write(f"🔍 DEBUG: File su Supabase per questo utente: {len(file_su_supabase)}")
         
         # 🔍 VERIFICA COERENZA: Se DB è vuoto ma session ha file, è un errore -> reset
         if len(file_su_supabase) == 0 and len(st.session_state.files_processati_sessione) > 0:
@@ -3554,8 +3583,9 @@ if uploaded_files:
         file_su_supabase = set()
 
 
-    # DEBUG TEMPORANEO
-    st.write(f"🔍 DEBUG: File in sessione corrente: {len(st.session_state.files_processati_sessione)}")
+    # DEBUG TEMPORANEO (solo admin)
+    if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+        st.write(f"🔍 DEBUG: File in sessione corrente: {len(st.session_state.files_processati_sessione)}")
     
     tutti_file_processati = st.session_state.files_processati_sessione | file_su_supabase
     
@@ -3626,10 +3656,11 @@ if uploaded_files:
                 
                 # Routing automatico per tipo file con TRY/EXCEPT ROBUSTO
                 try:
-                    # 🔍 DEBUG: Log dettagli file
-                    file_size_kb = len(file.getvalue()) / 1024
-                    file_type = "XML" if nome_file.endswith('.xml') else "PDF/IMG"
-                    logger.info(f"🔍 DEBUG: File={file.name}, Tipo={file_type}, Dimensione={file_size_kb:.1f}KB")
+                    # 🔍 DEBUG: Log dettagli file (solo admin)
+                    if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+                        file_size_kb = len(file.getvalue()) / 1024
+                        file_type = "XML" if nome_file.endswith('.xml') else "PDF/IMG"
+                        logger.info(f"🔍 DEBUG: File={file.name}, Tipo={file_type}, Dimensione={file_size_kb:.1f}KB")
                     
                     if nome_file.endswith('.xml'):
                         items = estrai_dati_da_xml(file)
@@ -3644,8 +3675,9 @@ if uploaded_files:
                     if len(items) == 0:
                         raise ValueError("Nessuna riga estratta - DataFrame vuoto")
                     
-                    # 🔍 DEBUG: Log risultato parsing
-                    logger.info(f"🔍 DEBUG: {file.name} → {len(items)} righe estratte")
+                    # 🔍 DEBUG: Log risultato parsing (solo admin)
+                    if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+                        logger.info(f"🔍 DEBUG: {file.name} → {len(items)} righe estratte")
                     
                     # Salva in memoria se trovati dati (SILENZIOSO)
                     result = salva_fattura_processata(file.name, items, silent=True)
@@ -3729,21 +3761,33 @@ if uploaded_files:
             # Report errori con dettaglio
             if len(file_errore) > 0:
                 st.error(f"❌ {len(file_errore)} file FALLITI:")
-                for nome_file, errore in file_errore.items():
-                    st.write(f"- {nome_file}: {errore}")
                 
-                with st.expander("📋 DETTAGLIO ERRORI COMPLETO", expanded=False):
+                # Clienti vedono solo nome file
+                is_admin = st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False)
+                
+                if is_admin:
+                    # Admin vedono messaggio errore completo
                     for nome_file, errore in file_errore.items():
-                        st.code(f"❌ {nome_file}\n   → {errore}", language="text")
-                    
-                    # Download log errori
-                    error_log = "\n".join([f"{nome}: {err}" for nome, err in file_errore.items()])
-                    st.download_button(
-                        label="💾 Scarica log errori",
-                        data=error_log,
-                        file_name="errori_upload.txt",
-                        mime="text/plain"
-                    )
+                        st.write(f"- {nome_file}: {errore}")
+                else:
+                    # Clienti vedono solo nome file
+                    for nome_file in file_errore.keys():
+                        st.write(f"- {nome_file}")
+                
+                # Dettaglio completo solo per admin
+                if is_admin:
+                    with st.expander("📋 DETTAGLIO ERRORI COMPLETO", expanded=False):
+                        for nome_file, errore in file_errore.items():
+                            st.code(f"❌ {nome_file}\n   → {errore}", language="text")
+                        
+                        # Download log errori
+                        error_log = "\n".join([f"{nome}: {err}" for nome, err in file_errore.items()])
+                        st.download_button(
+                            label="💾 Scarica log errori",
+                            data=error_log,
+                            file_name="errori_upload.txt",
+                            mime="text/plain"
+                        )
             
             # Audit coerenza post-upload
             if file_processati > 0:

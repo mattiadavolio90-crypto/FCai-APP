@@ -414,14 +414,31 @@ def carica_categorie_da_db(supabase_client=None) -> list:
         list: Lista categorie formato "CARNE" (SENZA EMOJI), ordinata
     
     Note:
-        - Attualmente forza sempre fallback hardcoded
+        - Carica da prodotti_master.categoria (DISTINCT)
         - Categorie pulite senza emoji garantito
         - Cache 5 minuti (se usato con @st.cache_data)
     """
-    # 🔥 USA SOLO FALLBACK hardcoded (categorie pulite senza emoji)
-    # Questo bypassa completamente il database Supabase
-    logger.info("✅ USANDO FALLBACK HARDCODED (senza emoji garantito)")
-    return _get_categorie_fallback()
+    try:
+        # Tenta caricamento da Supabase se client disponibile
+        if supabase_client:
+            # Ottieni categorie uniche da prodotti_master
+            response = supabase_client.table("prodotti_master").select("categoria").execute()
+            
+            if response.data and len(response.data) > 0:
+                # Estrai categorie uniche, ordina alfabeticamente
+                categorie_db = sorted(list(set([row["categoria"] for row in response.data if row.get("categoria")])))
+                
+                if categorie_db:
+                    logger.info(f"✅ Caricate {len(categorie_db)} categorie da prodotti_master")
+                    return categorie_db
+        
+        # Fallback se client non disponibile o query fallisce
+        logger.info("⚠️ Fallback a categorie hardcoded")
+        return _get_categorie_fallback()
+        
+    except Exception as e:
+        logger.warning(f"Errore caricamento categorie da DB: {e}, uso fallback")
+        return _get_categorie_fallback()
 
 
 def _get_categorie_fallback() -> list:

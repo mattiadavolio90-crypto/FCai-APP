@@ -21,8 +21,9 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, Dict, Any
 
-# Logger
-logger = logging.getLogger('fci_app.auth')
+# Logger centralizzato
+from config.logger_setup import get_logger
+logger = get_logger('auth')
 
 # Hasher globale Argon2
 ph = argon2.PasswordHasher()

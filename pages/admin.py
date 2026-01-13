@@ -667,7 +667,7 @@ if 'active_tab' not in st.session_state:
 
 # Cache categorie in session_state (carica 1 sola volta)
 if 'categorie_cached' not in st.session_state:
-    st.session_state.categorie_cached = carica_categorie_da_db()
+    st.session_state.categorie_cached = carica_categorie_da_db(supabase_client=supabase)
     logger.info(f"✅ Categorie caricate in cache: {len(st.session_state.categorie_cached)} categorie")
 
 # Usa radio buttons nascosti per mantenere tab attivo

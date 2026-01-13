@@ -38,8 +38,9 @@ from utils.validation import (
     verifica_integrita_fattura
 )
 
-# Logger
-logger = logging.getLogger('fci_app.invoice')
+# Logger centralizzato
+from config.logger_setup import get_logger
+logger = get_logger('invoice')
 
 
 def estrai_dati_da_xml(file_caricato):

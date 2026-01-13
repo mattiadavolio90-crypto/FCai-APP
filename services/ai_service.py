@@ -25,9 +25,10 @@ from config.constants import DIZIONARIO_CORREZIONI, TUTTE_LE_CATEGORIE
 from utils.text_utils import get_descrizione_normalizzata_e_originale, normalizza_stringa
 from utils.validation import is_dicitura_sicura
 
-# Configurazione logger
+# Logger centralizzato
 import logging
-logger = logging.getLogger(__name__)
+from config.logger_setup import get_logger
+logger = get_logger('ai')
 
 # ============================================================
 # COSTANTI

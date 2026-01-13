@@ -4,6 +4,7 @@ da fatture XML (società e persone fisiche)
 """
 import xmltodict
 import os
+from utils.text_utils import normalizza_stringa
 
 def safe_get(dizionario, percorso_chiavi, default=None, keep_list=False):
     """Naviga dizionario annidato in sicurezza"""
@@ -27,13 +28,6 @@ def safe_get(dizionario, percorso_chiavi, default=None, keep_list=False):
             return default
     
     return valore_corrente if valore_corrente is not None else default
-
-
-def normalizza_stringa(testo):
-    """Normalizza stringa in maiuscolo"""
-    if not testo or not isinstance(testo, str):
-        return ""
-    return testo.strip().upper()
 
 
 def estrai_fornitore_xml(fattura):
