@@ -740,6 +740,10 @@ if not st.session_state.get('logged_in', False):
 # Se arrivi qui, sei loggato! Vai DIRETTO ALL'APP
 user = st.session_state.user_data
 
+# DEBUG: Log per verificare contenuto user_data
+logger.info(f"🔍 USER_DATA: {user}")
+logger.info(f"🔍 USER EMAIL: {user.get('email') if user else 'USER IS NONE'}")
+
 # ULTIMA VERIFICA: se user_data è None, FORZA logout
 if not user or not user.get('email'):
     logger.critical("⛔ user_data invalido - forzando logout")
@@ -819,8 +823,10 @@ with col1:
     background-clip: text;">Analisi Fatture AI</span>
 </h1>
 """, unsafe_allow_html=True)
-    # Usa la variabile user (già verificata) invece di st.session_state.user_data
-    st.caption(f"👤 {user.get('nome_ristorante', 'Utente')} | {user.get('email', 'N/A')}")
+    # Visualizza email utente (usa user già verificato + fallback a session_state)
+    user_email = user.get('email') or st.session_state.user_data.get('email', 'N/A')
+    user_name = user.get('nome_ristorante', 'Utente')
+    st.caption(f"👤 {user_name} | {user_email}")
 
 
 # Pulsanti diversi per admin e clienti
@@ -2014,6 +2020,14 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         
         # ✅ Le categorie vengono normalizzate automaticamente al caricamento
         # Migrazione vecchi nomi → nuovi nomi avviene in carica_e_prepara_dataframe()
+        
+        # 🚫 RIMUOVI colonna LISTINO dalla visualizzazione
+        if 'PrezzoStandard' in df_editor.columns:
+            df_editor = df_editor.drop(columns=['PrezzoStandard'])
+        elif 'Listino' in df_editor.columns:
+            df_editor = df_editor.drop(columns=['Listino'])
+        elif 'LISTINO' in df_editor.columns:
+            df_editor = df_editor.drop(columns=['LISTINO'])
 
         edited_df = st.data_editor(
             df_editor,
@@ -2032,16 +2046,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                 "Fornitore": st.column_config.TextColumn("Fornitore", disabled=True),
                 "FileOrigine": st.column_config.TextColumn("File", disabled=True),
                 "Quantita": st.column_config.NumberColumn("Q.tà", disabled=True),
-                "UnitaMisura": st.column_config.TextColumn("U.M.", disabled=True, width="small"),
-                "PrezzoStandard": st.column_config.NumberColumn(
-                    "LISTINO",
-                    help="Prezzo di listino standardizzato - calcolato automaticamente per confronti. Puoi modificarlo manualmente.",
-                    format="€%.2f",
-                    min_value=0.01,
-                    max_value=10000,
-                    step=0.01,
-                    width="small"
-                )
+                "UnitaMisura": st.column_config.TextColumn("U.M.", disabled=True, width="small")
             },
             hide_index=True,
             use_container_width=True,
