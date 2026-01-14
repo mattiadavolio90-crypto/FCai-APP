@@ -129,6 +129,8 @@ def verifica_integrita_fattura(
     """
     Verifica che tutte le righe del file siano state salvate su Supabase.
     
+    ⚠️ CRITICO: Conta SOLO le righe di QUESTO FILE, non l'utente intero!
+    
     Args:
         nome_file: nome file fattura
         dati_prodotti: lista righe parsed
@@ -139,7 +141,7 @@ def verifica_integrita_fattura(
         dict: {
             "file": str,
             "righe_parsed": int,
-            "righe_db": int,
+            "righe_db": int (SOLO questo file),
             "perdite": int,
             "integrita_ok": bool
         } o None se errore
@@ -157,14 +159,28 @@ def verifica_integrita_fattura(
         # Conta righe nel DataFrame parsed
         righe_parsed = len(dati_prodotti)
         
-        # Conta righe effettivamente salvate su Supabase
+        # 🔴 DEBUG: Controlla come è salvato il file_origine in DB
+        # Prima query: cerca il file per debug
+        response_debug = supabase_client.table("fatture") \
+            .select("file_origine, id") \
+            .eq("user_id", user_id) \
+            .limit(50) \
+            .execute()
+        
+        file_origini_in_db = list(set([r.get("file_origine", "?") for r in response_debug.data])) if response_debug.data else []
+        logger.debug(f"🔍 VERIFICA DEBUG: cerco '{nome_file}' tra: {file_origini_in_db}")
+        
+        # Query specifica per il file_origine (doppio filtro user_id + file_origine)
         response = supabase_client.table("fatture") \
-            .select("id") \
+            .select("id", count="exact") \
             .eq("user_id", user_id) \
             .eq("file_origine", nome_file) \
             .execute()
         
-        righe_db = len(response.data) if response.data else 0
+        logger.debug(f"🔍 VERIFICA QUERY: user_id={user_id}, file_origine='{nome_file}' → count={response.count}, data_len={len(response.data) if response.data else 0}")
+        
+        # Usa count esatto dalle metadata della query (più affidabile)
+        righe_db = response.count if response.count is not None else len(response.data) if response.data else 0
         
         # Risultato verifica
         risultato = {
@@ -177,9 +193,9 @@ def verifica_integrita_fattura(
         
         # Log dettagliato
         if not risultato["integrita_ok"]:
-            logger.error(f"⚠️ PERDITA DATI: {risultato}")
+            logger.error(f"🚨 DISCREPANZA {nome_file}: parsed={righe_parsed} vs db={righe_db}")
         else:
-            logger.info(f"✅ Integrità OK: {nome_file} - {righe_db} righe")
+            logger.info(f"✅ Integrità OK: {nome_file} - {righe_db} righe confermate")
         
         return risultato
     

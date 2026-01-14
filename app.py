@@ -140,7 +140,8 @@ if st.secrets.get("environment", {}).get("mode", "production") != "production":
     for module_name in services_modules:
         if module_name in sys.modules:
             importlib.reload(sys.modules[module_name])
-            st.write(f"🔄 Reloaded: {module_name}")  # Debug, rimuovere dopo test
+            if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+                st.write(f"🔄 Reloaded: {module_name}")  # Debug, rimuovere dopo test
 
 
 # ============================================================
@@ -1077,8 +1078,8 @@ def elimina_tutte_fatture(user_id):
         invalida_cache_memoria()
         try:
             st.cache_resource.clear()
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"⚠️ Errore clear cache_resource: {e}")
         
         # 🔥 RESET SESSION STATE: Reinizializza set vuoti per i file
         st.session_state.files_processati_sessione = set()
@@ -1173,20 +1174,43 @@ def get_fatture_stats(user_id: str) -> dict:
     - Usato per tutti i conteggi pubblici
     """
     try:
-        response = supabase.table("fatture") \
-            .select("file_origine", count='exact') \
-            .eq("user_id", user_id) \
-            .execute()
+        # ⚠️ CRITICO: Contare file unici richiede paginazione o query ottimizzata
+        # Soluzione: Pagina TUTTE le righe per ottenere file_origine completi
         
-        if not response.data:
-            return {"num_uniche": 0, "num_righe": 0, "success": True}
+        file_unici_set = set()
+        total_rows = 0
+        page = 0
+        page_size = 1000
         
-        # Conta file unici e righe totali
-        file_unici_set = set([r["file_origine"] for r in response.data])
+        while True:
+            offset = page * page_size
+            response = supabase.table("fatture") \
+                .select("file_origine", count='exact') \
+                .eq("user_id", user_id) \
+                .range(offset, offset + page_size - 1) \
+                .execute()
+            
+            if not response.data:
+                break
+            
+            # Aggiungi file_origine di questa pagina al set
+            for r in response.data:
+                if r.get("file_origine"):
+                    file_unici_set.add(r["file_origine"])
+            
+            # Salva il count totale (uguale per tutte le pagine)
+            if page == 0:
+                total_rows = response.count if response.count else 0
+            
+            # Se questa pagina ha meno di page_size record, abbiamo finito
+            if len(response.data) < page_size:
+                break
+                
+            page += 1
         
         return {
             "num_uniche": len(file_unici_set),
-            "num_righe": response.count,  # ✅ FIX: usa count reale invece di len()
+            "num_righe": total_rows,
             "success": True
         }
     except Exception as e:
@@ -1971,7 +1995,75 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
 
 
         num_righe = len(df_editor)
-        altezza_dinamica = min(max(num_righe * 35 + 50, 200), 500)
+        
+        # ============================================================
+        # PAGINAZIONE AUTOMATICA - Supporto per 100k+ righe
+        # ============================================================
+        # Inizializza session state per paginazione
+        if 'pagina_dettaglio_articoli' not in st.session_state:
+            st.session_state.pagina_dettaglio_articoli = 0
+        if 'righe_per_pagina_dettaglio' not in st.session_state:
+            st.session_state.righe_per_pagina_dettaglio = 1000  # Default 1000 righe per pagina
+        
+        # Calcola paginazione
+        righe_per_pagina = st.session_state.righe_per_pagina_dettaglio
+        pagina_corrente = st.session_state.pagina_dettaglio_articoli
+        num_pagine_totali = (num_righe + righe_per_pagina - 1) // righe_per_pagina  # Ceiling division
+        
+        # Valida pagina (caso: utente ritorna con meno dati)
+        if pagina_corrente >= num_pagine_totali and num_pagine_totali > 0:
+            pagina_corrente = num_pagine_totali - 1
+            st.session_state.pagina_dettaglio_articoli = pagina_corrente
+        
+        # Calcola indici per slice
+        idx_inizio = pagina_corrente * righe_per_pagina
+        idx_fine = min(idx_inizio + righe_per_pagina, num_righe)
+        
+        # Slice dataframe per pagina corrente
+        df_editor_paginato = df_editor.iloc[idx_inizio:idx_fine].copy()
+        
+        # Mostra info paginazione
+        st.markdown(f"""
+        <div style="background-color: #E8F5E9; padding: 12px 15px; border-radius: 8px; border-left: 4px solid #4CAF50; margin-bottom: 15px;">
+            <p style="margin: 0; font-size: 14px; color: #2E7D32; font-weight: 500;">
+                📄 <strong>Pagina {pagina_corrente + 1} di {max(1, num_pagine_totali)}</strong> | 
+                Righe {idx_inizio + 1:,} - {idx_fine:,} di {num_righe:,} totali
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Controlli paginazione
+        col_prev, col_size, col_next = st.columns([1, 2, 1])
+        
+        with col_prev:
+            if st.button("◀ Pagina Precedente", use_container_width=True, key="btn_pagina_prev"):
+                if pagina_corrente > 0:
+                    st.session_state.pagina_dettaglio_articoli -= 1
+                    st.rerun()
+                else:
+                    st.warning("Sei già alla prima pagina")
+        
+        with col_size:
+            nuove_righe_pagina = st.selectbox(
+                "Righe per pagina:",
+                options=[500, 1000, 2000, 5000],
+                index=1,  # Default 1000
+                key="select_righe_pagina"
+            )
+            if nuove_righe_pagina != righe_per_pagina:
+                st.session_state.righe_per_pagina_dettaglio = nuove_righe_pagina
+                st.session_state.pagina_dettaglio_articoli = 0
+                st.rerun()
+        
+        with col_next:
+            if st.button("Pagina Successiva ▶", use_container_width=True, key="btn_pagina_next"):
+                if pagina_corrente < num_pagine_totali - 1:
+                    st.session_state.pagina_dettaglio_articoli += 1
+                    st.rerun()
+                else:
+                    st.warning("Sei già all'ultima pagina")
+        
+        altezza_dinamica = min(max(len(df_editor_paginato) * 35 + 50, 200), 500)
 
         # ===== CARICA CATEGORIE DINAMICHE =====
         categorie_disponibili = carica_categorie_da_db(supabase_client=supabase)
@@ -2045,15 +2137,15 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         # Migrazione vecchi nomi → nuovi nomi avviene in carica_e_prepara_dataframe()
         
         # 🚫 RIMUOVI colonna LISTINO dalla visualizzazione
-        if 'PrezzoStandard' in df_editor.columns:
-            df_editor = df_editor.drop(columns=['PrezzoStandard'])
-        elif 'Listino' in df_editor.columns:
-            df_editor = df_editor.drop(columns=['Listino'])
-        elif 'LISTINO' in df_editor.columns:
-            df_editor = df_editor.drop(columns=['LISTINO'])
+        if 'PrezzoStandard' in df_editor_paginato.columns:
+            df_editor_paginato = df_editor_paginato.drop(columns=['PrezzoStandard'])
+        elif 'Listino' in df_editor_paginato.columns:
+            df_editor_paginato = df_editor_paginato.drop(columns=['Listino'])
+        elif 'LISTINO' in df_editor_paginato.columns:
+            df_editor_paginato = df_editor_paginato.drop(columns=['LISTINO'])
 
         edited_df = st.data_editor(
-            df_editor,
+            df_editor_paginato,
             column_config={
                 "DataDocumento": st.column_config.TextColumn("Data", disabled=True),
                 "Categoria": st.column_config.SelectboxColumn(
@@ -2160,6 +2252,12 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                 user_email = st.session_state.user_data.get("email", "unknown")
                 modifiche_effettuate = 0
                 
+                # ⚠️ NOTA PAGINAZIONE: Il salvataggio riguarda SOLO le righe della pagina corrente
+                righe_salvate = len(edited_df)
+                righe_totali_tabella = num_righe
+                if righe_salvate < righe_totali_tabella:
+                    st.info(f"💾 Stai salvando {righe_salvate} righe della pagina corrente. Verifica altre pagine per modifiche aggiuntive.")
+                
                 # ========================================
                 # ✅ CHECK: Quale tabella stiamo modificando?
                 # ========================================
@@ -2206,8 +2304,8 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                             if prezzo_std is not None and pd.notna(prezzo_std):
                                 try:
                                     update_data["prezzo_standard"] = float(prezzo_std)
-                                except (ValueError, TypeError):
-                                    pass
+                                except (ValueError, TypeError) as e:
+                                    logger.warning(f"Errore conversione prezzo_standard: {e}")
                             
                             # 🔄 MODIFICA BATCH: Se categoria è cambiata, aggiorna TUTTE le righe con stessa descrizione
                             if vecchia_cat and vecchia_cat != nuova_cat:
@@ -3402,8 +3500,8 @@ if not df_cache.empty:
                         st.cache_data.clear()
                         try:
                             st.cache_resource.clear()
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.warning(f"⚠️ Errore clear cache_resource durante hard reset: {e}")
                         
                         progress.progress(80, text="Reset session state...")
                         
@@ -3411,10 +3509,7 @@ if not df_cache.empty:
                         keys_to_remove = [k for k in st.session_state.keys() 
                                          if k not in ['user_data', 'logged_in', 'check_conferma_svuota']]
                         for key in keys_to_remove:
-                            try:
-                                del st.session_state[key]
-                            except:
-                                pass
+                            st.session_state.pop(key, None)  # Sicuro: niente errore se non esiste
                         
                         # 🔥 ULTIMA PULIZIA CACHE: Doppia invalidazione per sicurezza
                         st.cache_data.clear()
@@ -3524,20 +3619,27 @@ else:
     # ============================================================
     # CHECK LIMITE RIGHE GLOBALE (STEP 1 - Performance)
     # ============================================================
+    # Configurazione limiti
+    MAX_RIGHE_GLOBALE = 100000  # 100k righe per sicurezza
+    MAX_RIGHE_BATCH = 500        # Max righe per batch upload
+    BATCH_FILE_SIZE = 20         # Max 20 file per batch
+    
     # Recupera user_id da session state (già definito sopra ma riusato qui per chiarezza)
     user_id = st.session_state.user_data["id"]
     
     stats_db = get_fatture_stats(user_id)
     righe_totali = stats_db['num_righe']
-    LIMITE_MAX_RIGHE = 6000
     
-    if righe_totali >= LIMITE_MAX_RIGHE:
-        st.error(f"⚠️ DATABASE PIENO ({righe_totali:,} righe)")
-        st.warning("Elimina fatture vecchie prima di caricarne altre")
-        st.info("Usa 'Gestione Fatture Caricate' sopra per eliminare")
+    # Controllo prima elaborazione
+    if righe_totali >= MAX_RIGHE_GLOBALE:
+        st.error(f"⚠️ Limite database raggiunto ({righe_totali:,} righe). Elimina vecchie fatture.")
+        st.warning("Usa 'Gestione Fatture Caricate' sopra per eliminare")
         st.stop()  # Blocca file_uploader
-    elif righe_totali >= 5000:
-        st.warning(f"⚠️ Attenzione: {righe_totali:,}/6000 righe ({(righe_totali/6000*100):.0f}%)")
+    
+    # Warning se vicino al limite (80%)
+    elif righe_totali >= MAX_RIGHE_GLOBALE * 0.8:
+        percentuale = (righe_totali / MAX_RIGHE_GLOBALE * 100)
+        st.warning(f"⚠️ Database quasi pieno: {righe_totali:,}/{MAX_RIGHE_GLOBALE:,} righe ({percentuale:.0f}%)")
     
     uploaded_files = st.file_uploader(
         "Carica file XML, PDF o Immagini",
@@ -3575,15 +3677,55 @@ if uploaded_files:
     
     # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
     # ⚠️ IMPORTANTE: Query fresca senza cache per evitare dati stale dopo eliminazione
+    # 🚀 OTTIMIZZAZIONE: Usa RPC function per ottenere solo file unici (evita 6000+ righe)
     try:
-        user_id = st.session_state.user_data["id"]
-        response = (
-            supabase.table("fatture")
-            .select("file_origine")
-            .eq("user_id", user_id)  # ← OBBLIGATORIO: solo file di questo utente
-            .execute()
-        )
-        file_su_supabase = {row["file_origine"] for row in response.data if row.get("file_origine")}
+        # ✅ Usa user_id globale definito alla linea 3373 (no ridefinizione)
+        
+        # Tentativo 1: Usa RPC function se disponibile (query aggregata SQL lato server)
+        try:
+            # Prova a chiamare funzione RPC che restituisce file_origine DISTINCT
+            response_rpc = supabase.rpc('get_distinct_files', {'p_user_id': user_id}).execute()
+            file_su_supabase = {row["file_origine"] for row in response_rpc.data if row.get("file_origine") and row["file_origine"].strip()}
+            
+            # DEBUG (solo admin)
+            if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+                st.write(f"🔍 DEBUG: File su Supabase (RPC): {len(file_su_supabase)}")
+                
+        except Exception as rpc_error:
+            # Fallback: Query normale ma ottimizzata CON PAGINAZIONE
+            logger.warning(f"RPC function non disponibile, uso query normale con paginazione: {rpc_error}")
+            
+            # ⚠️ CRITICO: Supabase restituisce di default solo 1000 righe!
+            # Dobbiamo paginare per ottenere TUTTI i file
+            file_su_supabase = set()
+            page = 0
+            page_size = 1000
+            
+            while True:
+                offset = page * page_size
+                response = (
+                    supabase.table("fatture")
+                    .select("file_origine", count="exact")
+                    .eq("user_id", user_id)
+                    .range(offset, offset + page_size - 1)
+                    .execute()
+                )
+                
+                if not response.data:
+                    break
+                    
+                # Estrai file_origine da questa pagina
+                for row in response.data:
+                    if row.get("file_origine") and row["file_origine"].strip():
+                        file_su_supabase.add(row["file_origine"])
+                
+                # Se questa pagina ha meno di page_size record, abbiamo finito
+                if len(response.data) < page_size:
+                    break
+                    
+                page += 1
+            
+            logger.debug(f"🔍 QUERY FALLBACK PAGINATA: Pagine scansionate: {page + 1}, File estratti: {len(file_su_supabase)}, Total DB count: {response.count}")
         
         # DEBUG TEMPORANEO - rimuovi dopo test (solo admin)
         if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
@@ -3618,26 +3760,26 @@ if uploaded_files:
         else:
             duplicati_interni.append(file.name)
     
+    # ============================================================
+    # FIX: DEDUPLICAZIONE CORRETTA (solo contro DB reale)
+    # ============================================================
     file_nuovi = []
     file_gia_processati = []
     
     for file in file_unici:
         filename = file.name
         
-        # Controlla se già processato (DB o sessione)
-        if filename in file_su_supabase or filename in st.session_state.files_processati_sessione:
-            file_gia_processati.append(file)
+        # Controlla SOLO se già nel DB (ignora session_state)
+        if filename in file_su_supabase:
+            file_gia_processati.append(filename)
         else:
             file_nuovi.append(file)
-            # Aggiungilo subito alla sessione per evitare riprocessamento
-            st.session_state.files_processati_sessione.add(filename)
     
-    # Messaggio semplice di conferma upload (senza lista ridondante)
+    # Messaggio SOLO se ci sono duplicati effettivi nel DB
     if file_nuovi:
         st.info(f"✅ **{len(file_nuovi)} nuove fatture** da elaborare")
     if file_gia_processati:
-        st.info(f"♻️ **{len(file_gia_processati)} fatture** già in memoria (ignorate)")
-        # NOTA: I duplicati NON vengono loggati (comportamento corretto, non problema)
+        st.info(f"📋 **{len(file_gia_processati)} fatture** già presenti nel database (ignorate)")
         
     if duplicati_interni:
         st.warning(f"⚠️ **{len(duplicati_interni)} duplicati** nell'upload (ignorati)")
@@ -3664,9 +3806,9 @@ if uploaded_files:
             total_files = len(file_nuovi)
             
             # ============================================================
-            # BATCH PROCESSING - 15 file alla volta (evita memoria piena)
+            # BATCH PROCESSING - 20 file alla volta (evita memoria piena)
             # ============================================================
-            BATCH_SIZE = 15
+            BATCH_SIZE = BATCH_FILE_SIZE  # Usa costante definita sopra (20)
             
             # Loop batch invisibile
             for batch_start in range(0, total_files, BATCH_SIZE):
@@ -3784,49 +3926,90 @@ if uploaded_files:
             status_text.empty()
             
             # ============================================
-            # REPORT FINALE FORMATTATO
+            # REPORT FINALE PULITO E PROFESSIONALE
             # ============================================
             
-            # Report successi
-            if file_processati > 0:
-                location_text = ""
-                if salvati_supabase > 0 and salvati_json == 0:
-                    location_text = " su **Supabase Cloud** ☁️"
-                elif salvati_json > 0 and salvati_supabase == 0:
-                    location_text = " su **JSON locale** 💾"
-                elif salvati_supabase > 0 and salvati_json > 0:
-                    location_text = f" (☁️ {salvati_supabase} su Supabase, 💾 {salvati_json} su JSON)"
-                
-                st.success(f"✅ **{file_processati}/{total_files} file elaborati con successo!** ({righe_totali} righe){location_text}")
-            
-            # Report errori con dettaglio PERSISTENTE
             if len(file_errore) > 0:
-                st.error(f"⚠️ {len(file_errore)} file FALLITI")
+                # CI SONO ERRORI - Report persistente
+                col1, col2 = st.columns([3, 1])
                 
-                # EXPANDER SEMPRE VISIBILE (aperto di default)
-                with st.expander("📋 DETTAGLIO ERRORI COMPLETO", expanded=True):
+                with col1:
+                    st.success(f"✅ {len(file_ok)}/{total_files} file elaborati con successo ({righe_totali} righe)")
+                
+                with col2:
+                    st.error(f"⚠️ {len(file_errore)} FALLITI")
+                
+                # Expander errori sempre aperto
+                with st.expander("📋 DETTAGLIO ERRORI", expanded=True):
                     for nome_file, errore in file_errore.items():
-                        st.code(f"❌ {nome_file}\n{errore}", language="text")
+                        st.code(f"❌ {nome_file}\n{errore[:200]}", language="text")
                     
-                    # Bottone download log errori
-                    error_log = "\n".join([f"{nome}: {err}" for nome, err in file_errore.items()])
-                    st.download_button(
-                        label="💾 Scarica log errori",
-                        data=error_log,
-                        file_name="errori_upload.txt",
-                        mime="text/plain"
-                    )
+                    st.markdown("---")
+                    
+                    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
+                    
+                    with col_btn1:
+                        if st.button("🗑️ Azzera Errori", type="secondary", use_container_width=True):
+                            st.rerun()
+                    
+                    with col_btn2:
+                        error_log = "\n".join([f"{nome}: {err}" for nome, err in file_errore.items()])
+                        st.download_button(
+                            label="💾 Scarica Log",
+                            data=error_log,
+                            file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
+                            mime="text/plain",
+                            use_container_width=True
+                        )
             
-            # Audit coerenza post-upload
+            else:
+                # TUTTO OK - Messaggio che sparisce automaticamente
+                success_container = st.empty()
+                
+                with success_container.container():
+                    st.success(f"🎉 {file_processati}/{total_files} file elaborati con successo!")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("📄 File", file_processati)
+                    with col2:
+                        st.metric("📊 Righe Totali", righe_totali)
+                    with col3:
+                        location_text = "Supabase" if salvati_supabase > 0 else "JSON"
+                        st.metric("💾 Storage", location_text)
+                
+                # Sparisce dopo 4 secondi
+                time.sleep(4)
+                success_container.empty()
+            
+            # ============================================================
+            # FIX: INVALIDAZIONE CACHE FORZATA + AUDIT
+            # ============================================================
             if file_processati > 0:
-                time.sleep(0.3)
+                # INVALIDAZIONE CACHE FORZATA post-upload
+                try:
+                    st.cache_data.clear()
+                    try:
+                        st.cache_resource.clear()
+                    except Exception as cache_error:
+                        logger.warning(f"⚠️ Errore clear cache_resource: {cache_error}")
+                    logger.info("✅ Cache invalidata dopo upload")
+                except Exception as e:
+                    logger.warning(f"⚠️ Errore invalidazione cache: {e}")
+                
+                # Piccola pausa per sincronizzazione DB
+                time.sleep(0.5)
+                
+                # Verifica audit coerenza
                 user_id = st.session_state.user_data.get("id")
                 audit_result = audit_data_consistency(user_id, context="post-upload")
                 if not audit_result["consistent"]:
+                    logger.warning(f"⚠️ AUDIT: DB ha {audit_result['db_count']} righe ma cache {audit_result['cache_count']}")
                     st.warning(f"⚠️ Audit: DB ha {audit_result['db_count']} righe ma cache ne mostra {audit_result['cache_count']}")
+                    # Ri-invalida cache e forza refresh
+                    st.cache_data.clear()
             
-            # Ricarica cache e aggiorna automaticamente
-            st.cache_data.clear()
+            # Ricarica pagina con dati freschi
             st.rerun()
         
         except Exception as e:
