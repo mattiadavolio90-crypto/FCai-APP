@@ -3960,12 +3960,12 @@ if uploaded_files:
             upload_placeholder.empty()
             progress_bar.empty()
             status_text.empty()
-            
-            # ============================================
-            # REPORT FINALE PULITO E PROFESSIONALE
-            # ============================================
-            
-            if len(file_errore) > 0:
+        
+        # ============================================
+        # REPORT FINALE PULITO E PROFESSIONALE
+        # ============================================
+        
+        if len(file_errore) > 0:
                 # CI SONO ERRORI - Report persistente
                 col1, col2 = st.columns([3, 1])
                 
@@ -4047,14 +4047,6 @@ if uploaded_files:
             
             # Ricarica pagina con dati freschi
             st.rerun()
-        
-        except Exception as e:
-            # CRITICO: rimuovi loading anche in caso di errore
-            upload_placeholder.empty()
-            progress_bar.empty()
-            status_text.empty()
-            st.error(f"❌ Errore durante l'elaborazione: {e}")
-            logger.exception("Errore upload fatture")
 
 
 # 🔥 CARICA E MOSTRA STATISTICHE SEMPRE (da Supabase)
