@@ -104,6 +104,11 @@ def estrai_dati_da_xml(file_caricato):
             linee = [linee]
         
         # ============================================================
+        # DIAGNOSTICA: Log numero righe trovate
+        # ============================================================
+        logger.info(f"📄 {file_caricato.name}: trovate {len(linee)} righe DettaglioLinee")
+        
+        # ============================================================
         # STEP 2: LIMITA A 25 RIGHE (evita timeout OpenAI)
         # ============================================================
         righe_originali_count = len(linee)
@@ -145,9 +150,26 @@ def estrai_dati_da_xml(file_caricato):
                     quantita = float(quantita_raw)
                 
                 # SKIP: Descrizione vuota o invalida (DDT, numeri)
-                descrizione = normalizza_stringa(descrizione_raw)
-                if not descrizione or descrizione.strip().upper() in ['DDT', 'DT', 'N/A']:
-                    logger.debug(f"{file_caricato.name} - Skip riga {idx}: descrizione vuota/invalida")
+                # ============================================================
+                # FIX FATTURE SERVIZI: Controlla descrizione PRIMA di normalizzare
+                # ============================================================
+                descrizione_raw_stripped = descrizione_raw.strip() if descrizione_raw else ""
+                
+                # Se descrizione è solo "." o molto corta MA c'è prezzo > 0 → usa fornitore
+                if len(descrizione_raw_stripped) <= 3 and len(descrizione_raw_stripped) > 0 and prezzo_base > 0:
+                    descrizione = f"Servizio {fornitore}"
+                    logger.info(f"{file_caricato.name} - Riga {idx}: descrizione '{descrizione_raw_stripped}' sostituita con '{descrizione}'")
+                else:
+                    # Normalizza normalmente
+                    descrizione = normalizza_stringa(descrizione_raw)
+                
+                # SKIP solo se completamente vuota
+                if not descrizione or len(descrizione.strip()) == 0:
+                    logger.debug(f"{file_caricato.name} - Skip riga {idx}: descrizione completamente vuota")
+                    continue
+                
+                if descrizione.strip().upper() in ['DDT', 'DT', 'N/A']:
+                    logger.debug(f"{file_caricato.name} - Skip riga {idx}: descrizione invalida ({descrizione})")
                     continue
                 
                 # TRIM: Descrizioni lunghe (max 100 caratteri)
@@ -219,6 +241,14 @@ def estrai_dati_da_xml(file_caricato):
             except Exception as e:
                 logger.warning(f"{file_caricato.name} - Riga {idx} skippata: {str(e)[:100]}")
                 continue
+        
+        # ============================================================
+        # DIAGNOSTICA: Log risultato finale
+        # ============================================================
+        logger.info(f"✅ {file_caricato.name}: {len(righe_prodotti)} righe valide estratte da {len(linee)} totali")
+        
+        if len(righe_prodotti) == 0:
+            logger.warning(f"⚠️ {file_caricato.name}: NESSUNA RIGA VALIDA - Tutte skippate dai filtri")
         
         return righe_prodotti
         

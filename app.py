@@ -3660,6 +3660,7 @@ else:
         if st.button("🔄 Reset upload (pulisci cache sessione)", key="reset_upload_cache"):
             st.session_state.files_processati_sessione = set()
             st.session_state.files_con_errori = set()
+            st.session_state.files_errori_report = {}
             # 🔥 Rimuovi flag force_empty per sbloccare caricamento
             if 'force_empty_until_upload' in st.session_state:
                 del st.session_state.force_empty_until_upload
@@ -3672,6 +3673,20 @@ if 'files_processati_sessione' not in st.session_state:
 
 if 'files_con_errori' not in st.session_state:
     st.session_state.files_con_errori = {}
+
+if 'files_errori_report' not in st.session_state:
+    st.session_state.files_errori_report = {}  # Dizionario persistente per mostrare report anche dopo rerun
+
+
+# ============================================================
+# AUTO-PULIZIA: Se non ci sono file caricati ma ci sono errori nel report,
+# significa che l'utente ha scaricato il log → pulisci automaticamente
+# ============================================================
+if not uploaded_files and len(st.session_state.files_errori_report) > 0:
+    logger.info("🧹 Auto-pulizia errori dopo download log")
+    st.session_state.files_con_errori = set()
+    st.session_state.files_errori_report = {}
+    # Non fare rerun qui, lascia che la pagina si aggiorni naturalmente
 
 
 # 🔥 GESTIONE FILE CARICATI
@@ -3779,6 +3794,13 @@ if uploaded_files:
         # Controlla SOLO se già nel DB (ignora session_state)
         if filename in file_su_supabase:
             file_gia_processati.append(filename)
+        # ============================================================
+        # PROTEZIONE: Salta file che hanno già dato errore in questa sessione
+        # ============================================================
+        elif filename in st.session_state.get('files_con_errori', set()):
+            logger.info(f"⏭️ File {filename} già fallito in questa sessione, salto")
+            # Non aggiungere a file_nuovi né a file_gia_processati
+            # Semplicemente ignora silenziosamente
         else:
             file_nuovi.append(file)
     
@@ -3898,15 +3920,13 @@ if uploaded_files:
                             raise ValueError(f"Errore salvataggio: {result.get('error', 'Sconosciuto')}")
                     
                     except Exception as e:
-                        # TRACCIA ERRORE DETTAGLIATO
+                        # TRACCIA ERRORE DETTAGLIATO (silenzioso - solo log)
                         error_msg = str(e)[:150]
                         logger.exception(f"❌ Errore elaborazione {file.name}")
                         file_errore[file.name] = error_msg
                         errori.append(f"{file.name}: {error_msg}")
                         
-                        # Warning immediato per file fallito (più visibile)
-                        st.error(f"❌ FILE SCARTATO: {file.name}")
-                        st.warning(f"Motivo: {error_msg}")
+                        # NON mostrare errore qui (evita duplicati) - verrà mostrato nel report finale
                         
                         # ============================================================
                         # PROTEZIONE DOPPIA: Traccia sia processati che errori
@@ -3918,6 +3938,9 @@ if uploaded_files:
                             st.session_state.files_con_errori = set()
                         
                         st.session_state.files_con_errori.add(file.name)
+                        
+                        # Salva anche in report persistente (per mostrarlo dopo download)
+                        st.session_state.files_errori_report[file.name] = error_msg
                         
                         # Log upload event FAILED
                         try:
@@ -3965,38 +3988,41 @@ if uploaded_files:
         # REPORT FINALE PULITO E PROFESSIONALE
         # ============================================
         
+        # Usa il report persistente da session_state (rimane anche dopo rerun del download)
         if len(file_errore) > 0:
-            # CI SONO ERRORI - Report persistente
-            col1, col2 = st.columns([3, 1])
+            # Aggiorna il report persistente con nuovi errori
+            st.session_state.files_errori_report.update(file_errore)
+        
+        # Mostra report se ci sono errori persistenti
+        if len(st.session_state.files_errori_report) > 0:
+            # CI SONO ERRORI - Report compatto e immediato
             
-            with col1:
-                st.success(f"✅ {len(file_ok)}/{total_files} file elaborati con successo ({righe_totali} righe)")
+            num_errori = len(st.session_state.files_errori_report)
             
-            with col2:
-                st.error(f"⚠️ {len(file_errore)} FALLITI")
+            # Messaggio principale compatto
+            st.error(f"❌ {num_errori} file SCARTATI")
             
-            # Expander errori sempre aperto
-            with st.expander("📋 DETTAGLIO ERRORI", expanded=True):
-                for nome_file, errore in file_errore.items():
-                    st.code(f"❌ {nome_file}\n{errore[:200]}", language="text")
+            # Expander errori compatto
+            with st.expander("📋 Dettaglio Errori", expanded=True):
+                for nome_file, errore in st.session_state.files_errori_report.items():
+                    st.warning(f"**{nome_file}**")
+                    st.caption(f"{errore[:200]}")
                 
-                st.markdown("---")
+                st.markdown("")
                 
-                col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
-                
-                with col_btn1:
-                    if st.button("🗑️ Azzera Errori", type="secondary", use_container_width=True):
-                        st.rerun()
-                
-                with col_btn2:
-                    error_log = "\n".join([f"{nome}: {err}" for nome, err in file_errore.items()])
-                    st.download_button(
-                        label="💾 Scarica Log",
-                        data=error_log,
-                        file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
-                        mime="text/plain",
-                        use_container_width=True
-                    )
+                # Un solo bottone: Scarica Log (che azzera automaticamente al rerun)
+                error_log = "\n".join([f"{nome}: {err}" for nome, err in st.session_state.files_errori_report.items()])
+                st.download_button(
+                    label="📥 Scarica Log e Azzera",
+                    data=error_log,
+                    file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                    type="primary"
+                )
+            
+            # Separatore visivo prima del resto della pagina
+            st.markdown("---")
         
         else:
             # TUTTO OK - Messaggio che sparisce automaticamente
