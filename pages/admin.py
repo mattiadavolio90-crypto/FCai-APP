@@ -1423,18 +1423,20 @@ if tab2:
     @st.cache_data(ttl=60, show_spinner=False)
     def carica_righe_zero_con_filtro(cliente_id=None):
         """
-        Carica righe €0, con filtro cliente opzionale.
+        Carica righe da validare: €0 OPPURE needs_review=true.
+        Query singola ottimizzata con OR.
         
         Args:
             cliente_id: UUID cliente o None per tutti
             
         Returns:
-            DataFrame con righe €0
+            DataFrame con righe da validare
         """
         try:
+            # Query singola con OR per entrambe le condizioni
             query = supabase.table('fatture')\
-                .select('id, descrizione, categoria, fornitore, file_origine, data_documento, user_id')\
-                .eq('prezzo_unitario', 0)
+                .select('id, descrizione, categoria, fornitore, file_origine, data_documento, user_id, prezzo_unitario, needs_review, reviewed_at, reviewed_by')\
+                .or_('prezzo_unitario.eq.0,needs_review.eq.true')
             
             # Applica filtro cliente se specificato
             if cliente_id:
@@ -1443,16 +1445,23 @@ if tab2:
             response = query.execute()
             
             df = pd.DataFrame(response.data) if response.data else pd.DataFrame()
+            
+            # Log statistiche
+            if not df.empty:
+                n_zero = len(df[df['prezzo_unitario'] == 0]) if 'prezzo_unitario' in df.columns else 0
+                n_review = len(df[df['needs_review'] == True]) if 'needs_review' in df.columns else 0
+                logger.info(f"🔍 Righe da validare: {n_zero} €0 | {n_review} needs_review | {len(df)} totali (dedup)")
+            
             return df
             
         except Exception as e:
-            logger.error(f"Errore caricamento righe €0: {e}")
+            logger.error(f"Errore caricamento righe review: {e}")
             return pd.DataFrame()
     
     df_zero = carica_righe_zero_con_filtro(filtro_cliente_id)
     
     if df_zero.empty:
-        st.success("✅ Nessuna riga con prezzo €0 da revisionare!")
+        st.success("✅ Nessuna riga da revisionare!")
         st.stop()
     
     # ============================================================
@@ -1628,85 +1637,94 @@ if tab2:
         
         col_desc, col_occur, col_cat, col_forn, col_azioni = st.columns([3, 0.7, 1.5, 1.5, 1.5])
         
-        # DESCRIZIONE
+        # DESCRIZIONE + Badge review
         with col_desc:
+            needs_review_flag = group.iloc[0].get('needs_review', False) if 'needs_review' in group.columns else False
+            review_badge = "🔍 " if needs_review_flag else ""
             desc_short = descrizione[:45] + "..." if len(descrizione) > 45 else descrizione
-            st.markdown(f"`{desc_short}`")
+            st.markdown(f"`{review_badge}{desc_short}`")
         
         # OCCORRENZE
         with col_occur:
             st.markdown(f"`{occorrenze}×`")
         
-        # CATEGORIA (dropdown modificabile)
+        # CATEGORIA ATTUALE
         with col_cat:
-            # Controlla se c'è una modifica pendente
-            if descrizione in st.session_state.modifiche_review:
-                cat_default = st.session_state.modifiche_review[descrizione]['nuova_categoria']
-            else:
-                cat_default = categoria_corrente
-            
-            # Estrai nome categoria SENZA emoji
-            cat_pulita = estrai_nome_categoria(cat_default)
-            index_default = categorie.index(cat_pulita) if cat_pulita in categorie else 0
-            
-            nuova_cat = st.selectbox(
-                "cat",
-                categorie,
-                index=index_default,
-                key=f"cat_review_{row_id}",
-                label_visibility="collapsed"
-            )
-            
-            # Traccia modifica se diversa
-            cat_clean = estrai_nome_categoria(nuova_cat)
-            if cat_clean != categoria_corrente:
-                st.session_state.modifiche_review[descrizione] = {
-                    'nuova_categoria': cat_clean,
-                    'occorrenze': occorrenze,
-                    'categoria_originale': categoria_corrente
-                }
-            elif descrizione in st.session_state.modifiche_review:
-                # Ripristinata categoria originale, rimuovi da pendenti
-                del st.session_state.modifiche_review[descrizione]
+            cat_short = categoria_corrente[:20] if categoria_corrente else "N/A"
+            st.text(cat_short)
         
         # FORNITORE
         with col_forn:
             forn_short = fornitore[:15] if fornitore else "N/A"
             st.caption(forn_short)
         
-        # AZIONI - Badge modifica o bottone ignora
+        # AZIONI - Bottoni Ignora e Modifica
         with col_azioni:
             col_a1, col_a2 = st.columns(2)
             
             with col_a1:
-                # Mostra badge se c'è modifica pendente
-                if descrizione in st.session_state.modifiche_review:
-                    st.markdown("🔸 **Mod**")
-                else:
-                    st.caption("-")
-            
-            # AZIONE: Ignora (marca TUTTE come NOTE E DICITURE)
-            with col_a2:
-                if st.button("🗑️", key=f"ignore_{row_id}", help=f"Ignora {occorrenze} righe"):
+                # Bottone IGNORA
+                if st.button("❌", key=f"ignore_{idx}", help="Ignora definitivamente"):
                     try:
-                        # Marca TUTTE LE RIGHE CON STESSA DESCRIZIONE
+                        from datetime import datetime
                         result = supabase.table('fatture').update({
-                            'categoria': 'NOTE E DICITURE'
+                            'categoria': '📝 NOTE E DICITURE',
+                            'needs_review': False,
+                            'reviewed_at': datetime.now().isoformat(),
+                            'reviewed_by': 'admin'
                         }).eq('descrizione', descrizione).execute()
                         
-                        num_updated = len(result.data) if result.data else occorrenze
-                        
-                        # Rimuovi da modifiche pendenti se presente
-                        if descrizione in st.session_state.modifiche_review:
-                            del st.session_state.modifiche_review[descrizione]
-                        
-                        st.success(f"✅ {num_updated} righe ignorate")
+                        st.success(f"❌ {len(result.data) if result.data else occorrenze} righe ignorate")
                         st.cache_data.clear()
                         time.sleep(0.5)
                         st.rerun()
-                        
                     except Exception as e:
                         st.error(f"Errore: {e}")
+            
+            with col_a2:
+                # Bottone MODIFICA (apre expander)
+                if st.button("✏️", key=f"edit_{idx}", help="Modifica categoria"):
+                    st.session_state[f"editing_{idx}"] = True
+                    st.rerun()
+        
+        # EXPANDER PER MODIFICA CATEGORIA
+        if st.session_state.get(f"editing_{idx}", False):
+            with st.expander(f"🔧 Modifica: {descrizione[:30]}...", expanded=True):
+                nuova_categoria = st.selectbox(
+                    "Nuova categoria:",
+                    ["🥩 CARNE", "🐟 PESCE", "🥬 VERDURE", "🍝 PASTA RISO", 
+                     "🧀 FORMAGGI", "🥛 LATTICINI", "🍞 PANE", "🛢️ OLIO",
+                     "🍕 PIZZA", "🍰 PASTICCERIA", "☕ CAFFÈ", "🍺 BIRRE",
+                     "🍷 VINI", "🧃 BEVANDE", "💧 ACQUA", "🧊 SURGELATI",
+                     "📦 NO FOOD", "📝 NOTE E DICITURE", "❓ Da Classificare"],
+                    key=f"newcat_{idx}"
+                )
+                
+                col_confirm, col_cancel = st.columns(2)
+                
+                with col_confirm:
+                    if st.button("✅ Conferma", key=f"confirm_{idx}"):
+                        try:
+                            from datetime import datetime
+                            result = supabase.table('fatture').update({
+                                'categoria': nuova_categoria,
+                                'needs_review': False,
+                                'reviewed_at': datetime.now().isoformat(),
+                                'reviewed_by': 'admin'
+                            }).eq('descrizione', descrizione).execute()
+                            
+                            st.success(f"✅ {len(result.data) if result.data else occorrenze} righe → {nuova_categoria}")
+                            del st.session_state[f"editing_{idx}"]
+                            st.cache_data.clear()
+                            time.sleep(0.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Errore: {e}")
+                
+                with col_cancel:
+                    if st.button("🚫 Annulla", key=f"cancel_{idx}"):
+                        del st.session_state[f"editing_{idx}"]
+                        st.rerun()
         
         st.markdown("---")
     

@@ -211,10 +211,34 @@ def estrai_dati_da_xml(file_caricato):
                     user_id=current_user_id
                 )
                 
-                # Escludi diciture
-                if categoria_finale == "ðŸ“ NOTE E DICITURE":
-                    logger.info(f"âŠ— Riga ESCLUSA (dicitura): {descrizione}")
-                    continue
+                # ============================================================
+                # STRATEGIA IBRIDA: Salva tutto, marca per review se necessario
+                # ============================================================
+                needs_review = False
+                
+                # CASO 1: Prezzo €0 con categoria DICITURA o DA CLASSIFICARE
+                if prezzo_unitario == 0 or totale_riga == 0:
+                    if categoria_finale == "📝 NOTE E DICITURE":
+                        needs_review = True
+                        logger.info(f"🔍 Dicitura €0 → review: {descrizione[:50]}")
+                    elif categoria_finale == "Da Classificare":
+                        needs_review = True
+                        logger.info(f"⚠️ €0 non classificato → review: {descrizione[:50]}")
+                    else:
+                        # Prodotto omaggio già categorizzato correttamente → OK
+                        needs_review = False
+                        logger.info(f"🎁 Omaggio categorizzato: {descrizione[:50]} → {categoria_finale}")
+                
+                # CASO 2: NOTE E DICITURE con prezzo > 0 (anomalia!)
+                elif categoria_finale == "📝 NOTE E DICITURE" and prezzo_unitario > 0:
+                    needs_review = True
+                    logger.warning(f"⚠️ NOTE con €{prezzo_unitario:.2f} → review obbligatorio: {descrizione[:50]}")
+                
+                # CASO 3: Tutto il resto → salva normalmente
+                else:
+                    needs_review = False
+                
+                # ❌ RIMOSSO: continue → ora salviamo SEMPRE
                 
                 # Calcolo prezzo standard
                 prezzo_std = calcola_prezzo_standard_intelligente(
@@ -236,7 +260,8 @@ def estrai_dati_da_xml(file_caricato):
                     'Categoria': categoria_finale,
                     'Data_Documento': data_documento,
                     'File_Origine': file_caricato.name,
-                    'Prezzo_Standard': prezzo_std
+                    'Prezzo_Standard': prezzo_std,
+                    'needs_review': needs_review
                 })
             except Exception as e:
                 logger.warning(f"{file_caricato.name} - Riga {idx} skippata: {str(e)[:100]}")
@@ -525,7 +550,8 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     "totale_riga": prod.get("TotaleRiga", prod.get("Totale_Riga", 0)),
                     "categoria": categoria_raw,
                     "codice_articolo": prod.get("CodiceArticolo", prod.get("Codice_Articolo", "")),
-                    "prezzo_standard": float(prezzo_std) if prezzo_std and pd.notna(prezzo_std) else None
+                    "prezzo_standard": float(prezzo_std) if prezzo_std and pd.notna(prezzo_std) else None,
+                    "needs_review": prod.get("needs_review", False)
                 })
             
             logger.info(f"ðŸ’¾ {nome_file}: invio {len(records)} record a Supabase")

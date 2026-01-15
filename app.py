@@ -1345,22 +1345,33 @@ def mostra_statistiche(df_completo):
                 st.rerun()
     # ===== FINE DEBUG =====
     
-    # ===== FILTRA DICITURE DA TUTTA L'ANALISI =====
+    # ===== FILTRA DICITURE E RIGHE IN REVIEW DA DASHBOARD =====
+    # Le righe needs_review=True vanno SOLO in Admin Panel
     righe_prima = len(df_completo)
-    fatture_prima = df_completo['FileOrigine'].nunique()
     
-    # 🔧 FIX: Usa fillna per mantenere righe con categoria NA/NULL (non sono diciture!)
-    df_completo = df_completo[df_completo['Categoria'].fillna('') != '📝 NOTE E DICITURE'].copy()
+    # Costruisci maschera esclusione
+    mask_escludi = pd.Series([False] * len(df_completo), index=df_completo.index)
+    
+    # 1. Escludi TUTTE le NOTE E DICITURE (validate o meno)
+    mask_note = df_completo['Categoria'].fillna('') == '📝 NOTE E DICITURE'
+    mask_escludi = mask_escludi | mask_note
+    
+    # 2. Escludi righe in review (qualsiasi categoria)
+    if 'needs_review' in df_completo.columns:
+        mask_review = df_completo['needs_review'].fillna(False) == True
+        mask_escludi = mask_escludi | mask_review
+    
+    # Applica filtro (MANTIENI righe NON escluse)
+    df_completo = df_completo[~mask_escludi].copy()
+    
     righe_dopo = len(df_completo)
-    fatture_dopo = df_completo['FileOrigine'].nunique()
-    
     if righe_prima > righe_dopo:
-        logger.info(f"Diciture escluse: {righe_prima - righe_dopo} righe, {fatture_prima - fatture_dopo} fatture")
+        logger.info(f"Escluse da dashboard: {righe_prima - righe_dopo} righe (NOTE + review)")
     
     if df_completo.empty:
         st.info("📭 Nessun dato disponibile dopo i filtri.")
         return
-    # ===== FINE FILTRO DICITURE =====
+    # ===== FINE FILTRO DICITURE E REVIEW =====
     
     # Recupera user_id da session_state (necessario per get_fatture_stats)
     user_id = st.session_state.user_data["id"]
@@ -3725,7 +3736,7 @@ if not uploaded_files and len(st.session_state.files_errori_report) > 0:
     logger.info("🧹 Auto-pulizia errori dopo download log")
     st.session_state.files_con_errori = set()
     st.session_state.files_errori_report = {}
-    # Non fare rerun qui, lascia che la pagina si aggiorni naturalmente
+    st.rerun()  # Forza refresh per mostrare pagina pulita
 
 
 # 🔥 GESTIONE FILE CARICATI
@@ -3856,10 +3867,11 @@ if uploaded_files:
             st.warning(f"⚠️ **{len(duplicati_interni)} duplicati** nell'upload (ignorati)")
     
     # ============================================================
-    # MESSAGGIO PER CLIENTI: Se TUTTI duplicati, avvisa
+    # MESSAGGIO PER CLIENTI: Se TUTTI duplicati E aveva fatture prima, avvisa
     # ============================================================
     if not file_nuovi and (file_gia_processati or duplicati_interni):
-        if not is_admin:
+        # Mostra messaggio SOLO se l'utente aveva già file nel DB (non primo upload)
+        if not is_admin and len(file_gia_processati) > 0:
             # Cliente: Messaggio semplice e chiaro
             totale_duplicati = len(file_gia_processati) + len(duplicati_interni)
             st.info(f"ℹ️ {totale_duplicati} fattura{'e' if totale_duplicati > 1 else ''} già caricata{'e' if totale_duplicati > 1 else ''} in precedenza")
