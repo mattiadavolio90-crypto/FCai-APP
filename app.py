@@ -3649,10 +3649,17 @@ else:
         key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"  # Chiave dinamica per reset
     )
 
+    # ============================================================
+    # INIZIALIZZAZIONE SET ERRORI (prevenzione loop)
+    # ============================================================
+    if 'files_con_errori' not in st.session_state:
+        st.session_state.files_con_errori = set()
+
     # Bottone Reset Upload (solo admin)
     if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
         if st.button("🔄 Reset upload (pulisci cache sessione)", key="reset_upload_cache"):
             st.session_state.files_processati_sessione = set()
+            st.session_state.files_con_errori = set()
             # 🔥 Rimuovi flag force_empty per sbloccare caricamento
             if 'force_empty_until_upload' in st.session_state:
                 del st.session_state.force_empty_until_upload
@@ -3826,6 +3833,18 @@ if uploaded_files:
                     idx_globale = batch_start + idx_in_batch + 1
                     nome_file = file.name.lower()
                     
+                    # ============================================================
+                    # PROTEZIONE LOOP: Salta file già elaborati o con errori
+                    # ============================================================
+                    if file.name in st.session_state.files_processati_sessione:
+                        logger.warning(f"⚠️ File {file.name} già in session_state, salto elaborazione")
+                        continue
+                    
+                    if file.name in st.session_state.get('files_con_errori', set()):
+                        logger.warning(f"⚠️ File {file.name} già fallito in precedenza, salto elaborazione")
+                        file_errore[file.name] = "File già fallito in questa sessione"
+                        continue
+                    
                     # Aggiorna progress GLOBALE
                     progress = idx_globale / total_files
                     progress_bar.progress(progress)
@@ -3885,11 +3904,20 @@ if uploaded_files:
                         file_errore[file.name] = error_msg
                         errori.append(f"{file.name}: {error_msg}")
                         
-                        # Warning immediato per file fallito
-                        st.warning(f"⚠️ ERRORE file: {file.name} - {error_msg}")
+                        # Warning immediato per file fallito (più visibile)
+                        st.error(f"❌ FILE SCARTATO: {file.name}")
+                        st.warning(f"Motivo: {error_msg}")
                         
-                        # Aggiungi a session state per evitare loop
+                        # ============================================================
+                        # PROTEZIONE DOPPIA: Traccia sia processati che errori
+                        # ============================================================
                         st.session_state.files_processati_sessione.add(file.name)
+                        
+                        # Inizializza set errori se non esiste
+                        if 'files_con_errori' not in st.session_state:
+                            st.session_state.files_con_errori = set()
+                        
+                        st.session_state.files_con_errori.add(file.name)
                         
                         # Log upload event FAILED
                         try:
@@ -3919,8 +3947,16 @@ if uploaded_files:
                 # ============================================================
                 if batch_end < total_files:
                     time.sleep(2)  # 2 secondi tra batch per evitare rate limit
-            
-            # Rimuovi loading e progress bar
+        
+        except Exception as critical_error:
+            # ERRORE CRITICO: ferma tutto ma mostra report
+            logger.exception(f"❌ ERRORE CRITICO durante elaborazione batch")
+            st.error(f"⚠️ ERRORE CRITICO: {str(critical_error)[:200]}")
+        
+        finally:
+            # ============================================================
+            # PULIZIA GARANTITA: rimuove loading anche in caso di crash
+            # ============================================================
             upload_placeholder.empty()
             progress_bar.empty()
             status_text.empty()
