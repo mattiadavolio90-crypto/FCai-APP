@@ -3966,57 +3966,57 @@ if uploaded_files:
         # ============================================
         
         if len(file_errore) > 0:
-                # CI SONO ERRORI - Report persistente
-                col1, col2 = st.columns([3, 1])
-                
-                with col1:
-                    st.success(f"✅ {len(file_ok)}/{total_files} file elaborati con successo ({righe_totali} righe)")
-                
-                with col2:
-                    st.error(f"⚠️ {len(file_errore)} FALLITI")
-                
-                # Expander errori sempre aperto
-                with st.expander("📋 DETTAGLIO ERRORI", expanded=True):
-                    for nome_file, errore in file_errore.items():
-                        st.code(f"❌ {nome_file}\n{errore[:200]}", language="text")
-                    
-                    st.markdown("---")
-                    
-                    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
-                    
-                    with col_btn1:
-                        if st.button("🗑️ Azzera Errori", type="secondary", use_container_width=True):
-                            st.rerun()
-                    
-                    with col_btn2:
-                        error_log = "\n".join([f"{nome}: {err}" for nome, err in file_errore.items()])
-                        st.download_button(
-                            label="💾 Scarica Log",
-                            data=error_log,
-                            file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
-                            mime="text/plain",
-                            use_container_width=True
-                        )
+            # CI SONO ERRORI - Report persistente
+            col1, col2 = st.columns([3, 1])
             
-            else:
-                # TUTTO OK - Messaggio che sparisce automaticamente
-                success_container = st.empty()
+            with col1:
+                st.success(f"✅ {len(file_ok)}/{total_files} file elaborati con successo ({righe_totali} righe)")
+            
+            with col2:
+                st.error(f"⚠️ {len(file_errore)} FALLITI")
+            
+            # Expander errori sempre aperto
+            with st.expander("📋 DETTAGLIO ERRORI", expanded=True):
+                for nome_file, errore in file_errore.items():
+                    st.code(f"❌ {nome_file}\n{errore[:200]}", language="text")
                 
-                with success_container.container():
-                    st.success(f"🎉 {file_processati}/{total_files} file elaborati con successo!")
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("📄 File", file_processati)
-                    with col2:
-                        st.metric("📊 Righe Totali", righe_totali)
-                    with col3:
-                        location_text = "Supabase" if salvati_supabase > 0 else "JSON"
-                        st.metric("💾 Storage", location_text)
+                st.markdown("---")
                 
-                # Sparisce dopo 4 secondi
-                time.sleep(4)
-                success_container.empty()
+                col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
+                
+                with col_btn1:
+                    if st.button("🗑️ Azzera Errori", type="secondary", use_container_width=True):
+                        st.rerun()
+                
+                with col_btn2:
+                    error_log = "\n".join([f"{nome}: {err}" for nome, err in file_errore.items()])
+                    st.download_button(
+                        label="💾 Scarica Log",
+                        data=error_log,
+                        file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
+                        mime="text/plain",
+                        use_container_width=True
+                    )
+        
+        else:
+            # TUTTO OK - Messaggio che sparisce automaticamente
+            success_container = st.empty()
+            
+            with success_container.container():
+                st.success(f"🎉 {file_processati}/{total_files} file elaborati con successo!")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("📄 File", file_processati)
+                with col2:
+                    st.metric("📊 Righe Totali", righe_totali)
+                with col3:
+                    location_text = "Supabase" if salvati_supabase > 0 else "JSON"
+                    st.metric("💾 Storage", location_text)
+            
+            # Sparisce dopo 4 secondi
+            time.sleep(4)
+            success_container.empty()
             
             # ============================================================
             # FIX: INVALIDAZIONE CACHE FORZATA + AUDIT
