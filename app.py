@@ -1396,11 +1396,26 @@ def mostra_statistiche(df_completo):
     # ============================================
     
     # Conta righe da classificare PRIMA del bottone
+    # Include: NULL, 'Da Classificare', e stringhe vuote/whitespace
     maschera_ai = (
         df_completo['Categoria'].isna()
         | (df_completo['Categoria'] == 'Da Classificare')
+        | (df_completo['Categoria'].astype(str).str.strip() == '')
+        | (df_completo['Categoria'] == '')
     )
     righe_da_classificare = maschera_ai.sum()
+    
+    # Debug: cerca specificamente COPPETTA SANGO
+    if 'COPPETTA' in ' '.join(df_completo['Descrizione'].astype(str).str.upper().tolist()):
+        coppetta_rows = df_completo[df_completo['Descrizione'].str.contains('COPPETTA', case=False, na=False)]
+        if not coppetta_rows.empty:
+            logger.info(f"🔍 DEBUG: Trovata COPPETTA in df_completo ({len(coppetta_rows)} righe)")
+            for idx, row in coppetta_rows.iterrows():
+                cat = row['Categoria']
+                in_maschera = maschera_ai.loc[idx] if idx in maschera_ai.index else False
+                logger.info(f"   - '{row['Descrizione']}' cat='{cat}' in_maschera={in_maschera}")
+        else:
+            logger.warning(f"⚠️ DEBUG: COPPETTA non trovata in df_completo")
     
     # ============================================================
     # LAYOUT: BOTTONE + TESTO INFORMATIVO
@@ -1428,6 +1443,9 @@ def mostra_statistiche(df_completo):
                 descrizioni_da_classificare = df_completo[maschera_ai]['Descrizione'].unique().tolist()
                 fornitori_da_classificare = df_completo[maschera_ai]['Fornitore'].unique().tolist()
 
+                # Debug: log descrizioni da classificare
+                logger.info(f"🔍 Descrizioni da classificare: {descrizioni_da_classificare[:10]}")
+                
                 if descrizioni_da_classificare:
                     with st.spinner(f"🧠 Classificazione AI in corso... ({len(descrizioni_da_classificare)} prodotti)"):
                         mappa_categorie = {}
@@ -1466,6 +1484,10 @@ def mostra_statistiche(df_completo):
                         descrizioni_non_trovate = []
                         
                         for desc, cat in mappa_categorie.items():
+                            # Debug specifico per COPPETTA SANGO
+                            if "COPPETTA" in desc.upper() or "SANGO" in desc.upper():
+                                logger.info(f"🔍 DEBUG COPPETTA: desc='{desc}' cat='{cat}'")
+                            
                             # TENTATIVO 1: Match esatto
                             result = supabase.table("fatture").update(
                                 {"categoria": cat}
