@@ -1463,16 +1463,54 @@ def mostra_statistiche(df_completo):
                         user_id = st.session_state.user_data["id"]
                         
                         righe_aggiornate_totali = 0
+                        descrizioni_non_trovate = []
+                        
                         for desc, cat in mappa_categorie.items():
-                            # Aggiorna tutte le righe con questa descrizione
+                            # TENTATIVO 1: Match esatto
                             result = supabase.table("fatture").update(
                                 {"categoria": cat}
                             ).eq("user_id", user_id).eq("descrizione", desc).execute()
                             
                             num_aggiornate = len(result.data) if result.data else 0
+                            
+                            # TENTATIVO 2: Se non ha trovato nulla, prova con trim degli spazi
+                            if num_aggiornate == 0:
+                                desc_trimmed = desc.strip()
+                                result2 = supabase.table("fatture").update(
+                                    {"categoria": cat}
+                                ).eq("user_id", user_id).eq("descrizione", desc_trimmed).execute()
+                                
+                                num_aggiornate = len(result2.data) if result2.data else 0
+                                
+                                if num_aggiornate > 0:
+                                    logger.info(f"✅ Match trovato con trim: '{desc_trimmed[:40]}...'")
+                            
+                            # TENTATIVO 3: Cerca descrizioni simili (con ILIKE)
+                            if num_aggiornate == 0:
+                                # Cerca con pattern ILIKE per gestire variazioni
+                                result3 = supabase.table("fatture").update(
+                                    {"categoria": cat}
+                                ).eq("user_id", user_id).ilike("descrizione", f"%{desc.strip()}%").execute()
+                                
+                                num_aggiornate_ilike = len(result3.data) if result3.data else 0
+                                
+                                if num_aggiornate_ilike > 0:
+                                    logger.info(f"✅ Match trovato con ILIKE: '{desc[:40]}...' → {num_aggiornate_ilike} righe")
+                                    num_aggiornate = num_aggiornate_ilike
+                                else:
+                                    descrizioni_non_trovate.append(desc)
+                                    logger.warning(f"⚠️ Nessun match trovato per: '{desc}'")
+                            
                             righe_aggiornate_totali += num_aggiornate
                             
-                            logger.info(f"🔄 '{desc[:40]}...' → {cat} ({num_aggiornate} righe)")
+                            if num_aggiornate > 0:
+                                logger.info(f"🔄 '{desc[:40]}...' → {cat} ({num_aggiornate} righe)")
+                        
+                        # Messaggio risultato
+                        if descrizioni_non_trovate:
+                            st.warning(f"⚠️ {len(descrizioni_non_trovate)} prodotti non trovati nel database:\n" + 
+                                      "\n".join([f"• {d[:60]}" for d in descrizioni_non_trovate[:3]]))
+                            logger.warning(f"❌ Descrizioni non trovate: {descrizioni_non_trovate}")
                         
                         st.toast(f"✅ Categorizzati {len(descrizioni_da_classificare)} prodotti ({righe_aggiornate_totali} righe) su Supabase!")
                         logger.info(f"🔄 CATEGORIZZAZIONE AI: Aggiornate {len(descrizioni_da_classificare)} descrizioni uniche, {righe_aggiornate_totali} righe totali")
@@ -1491,6 +1529,7 @@ def mostra_statistiche(df_completo):
                                 df_temp = pd.DataFrame(df_check.data)
                                 ancora_da_class = df_temp[(df_temp['categoria'].isna()) | (df_temp['categoria'] == 'Da Classificare')]['descrizione'].unique()
                                 if len(ancora_da_class) > 0:
+                                    st.info(f"ℹ️ Rimangono {len(ancora_da_class)} prodotti da categorizzare. Prova a categorizzarli manualmente dalla tabella.")
                                     logger.warning(f"⚠️ Rimangono {len(ancora_da_class)} prodotti da categorizzare: {ancora_da_class.tolist()[:5]}")
                         except Exception as log_err:
                             logger.error(f"Errore verifica post-categorizzazione: {log_err}")
