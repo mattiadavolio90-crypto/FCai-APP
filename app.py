@@ -1269,6 +1269,11 @@ def crea_pivot_mensile(df, index_col):
     df_temp['Mese'] = df_temp['Data_DT'].apply(
         lambda x: f"{mesi_ita[x.month]} {x.year}" if pd.notna(x) else ''
     )
+    
+    # Aggiungi colonna per ordinamento cronologico (AAAA-MM)
+    df_temp['Mese_Ordine'] = df_temp['Data_DT'].apply(
+        lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
+    )
 
 
     pivot = df_temp.pivot_table(
@@ -1279,8 +1284,13 @@ def crea_pivot_mensile(df, index_col):
         fill_value=0
     )
 
-
-    cols_sorted = sorted(list(pivot.columns))
+    # Crea mapping mese → anno-mese per ordinamento
+    mese_ordine_map = df_temp[['Mese', 'Mese_Ordine']].drop_duplicates()
+    mese_ordine_map = mese_ordine_map[mese_ordine_map['Mese'] != '']
+    mese_ordine_map = dict(zip(mese_ordine_map['Mese'], mese_ordine_map['Mese_Ordine']))
+    
+    # Ordina colonne cronologicamente
+    cols_sorted = sorted(list(pivot.columns), key=lambda x: mese_ordine_map.get(x, x))
     pivot = pivot[cols_sorted]
     pivot['TOTALE ANNO'] = pivot.sum(axis=1)
     pivot = pivot.reset_index()
@@ -1337,17 +1347,15 @@ def mostra_statistiche(df_completo):
     
     # ===== FILTRA DICITURE DA TUTTA L'ANALISI =====
     righe_prima = len(df_completo)
-    na_prima = df_completo['Categoria'].isna().sum()
-    logger.info(f"🔍 PRE-FILTRO DICITURE: {righe_prima} righe totali, {na_prima} con categoria NA")
+    fatture_prima = df_completo['FileOrigine'].nunique()
     
     # 🔧 FIX: Usa fillna per mantenere righe con categoria NA/NULL (non sono diciture!)
     df_completo = df_completo[df_completo['Categoria'].fillna('') != '📝 NOTE E DICITURE'].copy()
     righe_dopo = len(df_completo)
-    na_dopo = df_completo['Categoria'].isna().sum()
-    logger.info(f"🔍 POST-FILTRO DICITURE: {righe_dopo} righe totali, {na_dopo} con categoria NA")
+    fatture_dopo = df_completo['FileOrigine'].nunique()
     
     if righe_prima > righe_dopo:
-        logger.info(f"Diciture escluse dall'analisi: {righe_prima - righe_dopo} righe")
+        logger.info(f"Diciture escluse: {righe_prima - righe_dopo} righe, {fatture_prima - fatture_dopo} fatture")
     
     if df_completo.empty:
         st.info("📭 Nessun dato disponibile dopo i filtri.")
@@ -1625,13 +1633,18 @@ def mostra_statistiche(df_completo):
     # Calcola giorni nel periodo
     giorni = (data_fine_filtro - data_inizio_filtro).days + 1
     
-    # Stats globali
-    stats_totali = get_fatture_stats(user_id)
-    df_completo_filtrato = df_completo[df_completo['DataDocumento'].isin(df_food['DataDocumento'])]
+    # Stats globali: conta fatture PRIMA del filtro temporale (nel DF già pulito)
+    num_fatture_totali_df = df_completo['FileOrigine'].nunique() if not df_completo.empty else 0
+    num_righe_totali_df = len(df_completo)
+    
+    # Filtra df_completo per periodo (stesso filtro di df_food)
+    df_completo["Data_DT"] = pd.to_datetime(df_completo["DataDocumento"], errors='coerce').dt.date
+    mask_completo = (df_completo["Data_DT"] >= data_inizio_filtro) & (df_completo["Data_DT"] <= data_fine_filtro)
+    df_completo_filtrato = df_completo[mask_completo]
     num_doc_filtrati = df_completo_filtrato['FileOrigine'].nunique()
     
     # Mostra info periodo con box ben visibile (stile simile ai box blu)
-    info_testo = f"🗓️ {label_periodo} ({giorni} giorni) | 🍽️ Righe F&B: {len(df_food):,} | 📊 Righe Totali: {stats_totali['num_righe']:,} | 📄 Fatture: {num_doc_filtrati} di {stats_totali['num_uniche']}"
+    info_testo = f"🗓️ {label_periodo} ({giorni} giorni) | 🍽️ Righe F&B: {len(df_food):,} | 📊 Righe Totali: {num_righe_totali_df:,} | 📄 Fatture: {num_doc_filtrati} di {num_fatture_totali_df}"
     st.markdown(f"""
     <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); 
                 padding: 20px 25px; 
@@ -1842,7 +1855,7 @@ def mostra_statistiche(df_completo):
     # ========================================================
     if st.session_state.sezione_attiva == "dettaglio":
         # Placeholder se dataset mancanti/vuoti
-        if ('df_completo' not in locals()) or ('df_food' not in locals()) or ('df_spese_generali' not in locals()) or df_completo.empty:
+        if ('df_completo_filtrato' not in locals()) or ('df_food' not in locals()) or ('df_spese_generali' not in locals()) or df_completo_filtrato.empty:
             st.info("📊 Nessun dato disponibile. Carica le tue prime fatture!")
 
 
@@ -1899,22 +1912,22 @@ def mostra_statistiche(df_completo):
                 help="Salva le modifiche manuali che hai fatto nella tabella (es. cambi categoria da 'SECCO' a 'VERDURE')"
             )
         
-        # ✅ FILTRO DINAMICO IN BASE ALLA SELEZIONE
+        # ✅ FILTRO DINAMICO IN BASE ALLA SELEZIONE - USA DATI FILTRATI PER PERIODO
         if tipo_filtro == "Food & Beverage":
             # Solo F&B + NO FOOD, escludi spese generali
-            df_base = df_completo[
-                (~df_completo['Categoria'].isin(CATEGORIE_SPESE_GENERALI)) &
-                (~df_completo['Fornitore'].str.upper().str.contains('|'.join(FORNITORI_NO_FOOD_KEYWORDS), na=False))
+            df_base = df_completo_filtrato[
+                (~df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)) &
+                (~df_completo_filtrato['Fornitore'].str.upper().str.contains('|'.join(FORNITORI_NO_FOOD_KEYWORDS), na=False))
             ].copy()
         elif tipo_filtro == "Spese Generali":
             # Solo spese generali
-            df_base = df_completo[
-                df_completo['Categoria'].isin(CATEGORIE_SPESE_GENERALI)
+            df_base = df_completo_filtrato[
+                df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)
             ].copy()
         else:  # "Tutti"
             # Tutti i prodotti, escludi solo fornitori non-food
-            df_base = df_completo[
-                ~df_completo['Fornitore'].str.upper().str.contains('|'.join(FORNITORI_NO_FOOD_KEYWORDS), na=False)
+            df_base = df_completo_filtrato[
+                ~df_completo_filtrato['Fornitore'].str.upper().str.contains('|'.join(FORNITORI_NO_FOOD_KEYWORDS), na=False)
             ].copy()
         
         # Applica struttura colonne nell'ordine corretto
@@ -2397,7 +2410,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
     if st.session_state.sezione_attiva == "alert":
         
         # Verifica dataset
-        if ('df_completo' not in locals()) or df_completo.empty:
+        if ('df_completo_filtrato' not in locals()) or df_completo_filtrato.empty:
             st.warning("📊 Carica delle fatture per vedere gli alert.")
         else:
             
@@ -2423,8 +2436,8 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     help="Mostra solo aumenti ≥ +X%"
                 )
             
-            # CALCOLA ALERT (SOLO F&B)
-            df_alert = calcola_alert(df_completo, soglia_aumento, filtro_prodotto)
+            # CALCOLA ALERT (SOLO F&B) - USA DATI FILTRATI PER PERIODO
+            df_alert = calcola_alert(df_completo_filtrato, soglia_aumento, filtro_prodotto)
             
             # BADGE CONTEGGIO
             if not df_alert.empty:
@@ -3007,9 +3020,23 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             # ============================================
             st.markdown("#### 📊 Spesa per Categoria per Mese")
             
-            # Aggiungi colonna Mese
+            # Aggiungi colonna Mese con formato italiano
             df_spese_con_mese = df_spese_generali.copy()
-            df_spese_con_mese['Mese'] = pd.to_datetime(df_spese_con_mese['DataDocumento']).dt.to_period('M').astype(str)
+            df_spese_con_mese['Data_DT'] = pd.to_datetime(df_spese_con_mese['DataDocumento'], errors='coerce')
+            
+            mesi_ita = {
+                1: 'GENNAIO', 2: 'FEBBRAIO', 3: 'MARZO', 4: 'APRILE',
+                5: 'MAGGIO', 6: 'GIUGNO', 7: 'LUGLIO', 8: 'AGOSTO',
+                9: 'SETTEMBRE', 10: 'OTTOBRE', 11: 'NOVEMBRE', 12: 'DICEMBRE'
+            }
+            
+            df_spese_con_mese['Mese'] = df_spese_con_mese['Data_DT'].apply(
+                lambda x: f"{mesi_ita[x.month]} {x.year}" if pd.notna(x) else ''
+            )
+            
+            df_spese_con_mese['Mese_Ordine'] = df_spese_con_mese['Data_DT'].apply(
+                lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
+            )
             
             # Pivot: Categorie × Mesi
             pivot_cat = df_spese_con_mese.pivot_table(
@@ -3019,6 +3046,14 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                 aggfunc='sum',
                 fill_value=0
             )
+            
+            # Ordina colonne cronologicamente
+            mese_ordine_map = df_spese_con_mese[['Mese', 'Mese_Ordine']].drop_duplicates()
+            mese_ordine_map = mese_ordine_map[mese_ordine_map['Mese'] != '']
+            mese_ordine_map = dict(zip(mese_ordine_map['Mese'], mese_ordine_map['Mese_Ordine']))
+            
+            cols_sorted = sorted(list(pivot_cat.columns), key=lambda x: mese_ordine_map.get(x, x))
+            pivot_cat = pivot_cat[cols_sorted]
             
             # Aggiungi colonna TOTALE
             pivot_cat['TOTALE'] = pivot_cat.sum(axis=1)
@@ -3089,7 +3124,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             # ============================================
             st.markdown("#### 🏪 Spesa per Fornitore per Mese")
             
-            # Pivot: Fornitori × Mesi
+            # Pivot: Fornitori × Mesi (usa stesso df con mesi formattati)
             pivot_forn = df_spese_con_mese.pivot_table(
                 index='Fornitore',
                 columns='Mese',
@@ -3097,6 +3132,10 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                 aggfunc='sum',
                 fill_value=0
             )
+            
+            # Ordina colonne cronologicamente (usa stesso mapping)
+            cols_sorted_forn = sorted(list(pivot_forn.columns), key=lambda x: mese_ordine_map.get(x, x))
+            pivot_forn = pivot_forn[cols_sorted_forn]
             
             # Aggiungi colonna TOTALE
             pivot_forn['TOTALE'] = pivot_forn.sum(axis=1)
@@ -3804,14 +3843,26 @@ if uploaded_files:
         else:
             file_nuovi.append(file)
     
-    # Messaggio SOLO se ci sono duplicati effettivi nel DB
-    if file_nuovi:
-        st.info(f"✅ **{len(file_nuovi)} nuove fatture** da elaborare")
-    if file_gia_processati:
-        st.info(f"📋 **{len(file_gia_processati)} fatture** già presenti nel database (ignorate)")
-        
-    if duplicati_interni:
-        st.warning(f"⚠️ **{len(duplicati_interni)} duplicati** nell'upload (ignorati)")
+    # Messaggio SOLO per ADMIN (interfaccia pulita per clienti)
+    is_admin = st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False)
+    
+    if is_admin:
+        if file_nuovi:
+            st.info(f"✅ **{len(file_nuovi)} nuove fatture** da elaborare")
+        if file_gia_processati:
+            st.info(f"📋 **{len(file_gia_processati)} fatture** già presenti nel database (ignorate)")
+            
+        if duplicati_interni:
+            st.warning(f"⚠️ **{len(duplicati_interni)} duplicati** nell'upload (ignorati)")
+    
+    # ============================================================
+    # MESSAGGIO PER CLIENTI: Se TUTTI duplicati, avvisa
+    # ============================================================
+    if not file_nuovi and (file_gia_processati or duplicati_interni):
+        if not is_admin:
+            # Cliente: Messaggio semplice e chiaro
+            totale_duplicati = len(file_gia_processati) + len(duplicati_interni)
+            st.info(f"ℹ️ {totale_duplicati} fattura{'e' if totale_duplicati > 1 else ''} già caricata{'e' if totale_duplicati > 1 else ''} in precedenza")
     
     if file_nuovi:
         # Crea placeholder per loading AI
@@ -4000,15 +4051,18 @@ if uploaded_files:
             num_errori = len(st.session_state.files_errori_report)
             
             # Messaggio principale compatto
-            st.error(f"❌ {num_errori} file SCARTATI")
+            st.error(f"❌ {num_errori} fattura{'e' if num_errori > 1 else ''} SCARTATA{'E' if num_errori > 1 else ''}")
             
-            # Expander errori compatto
+            # Expander errori - PER TUTTI
             with st.expander("📋 Dettaglio Errori", expanded=True):
                 for nome_file, errore in st.session_state.files_errori_report.items():
                     st.warning(f"**{nome_file}**")
                     st.caption(f"{errore[:200]}")
                 
                 st.markdown("")
+                
+                # Istruzioni per il cliente
+                st.info("💡 **Clicca su 'Scarica Log e Azzera' e poi invia il file all'assistenza per risolvere il problema**")
                 
                 # Un solo bottone: Scarica Log (che azzera automaticamente al rerun)
                 error_log = "\n".join([f"{nome}: {err}" for nome, err in st.session_state.files_errori_report.items()])
@@ -4025,20 +4079,25 @@ if uploaded_files:
             st.markdown("---")
         
         else:
-            # TUTTO OK - Messaggio che sparisce automaticamente
+            # TUTTO OK - Messaggio pulito per clienti, dettagliato per admin
             success_container = st.empty()
             
             with success_container.container():
-                st.success(f"🎉 {file_processati}/{total_files} file elaborati con successo!")
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("📄 File", file_processati)
-                with col2:
-                    st.metric("📊 Righe Totali", righe_totali)
-                with col3:
-                    location_text = "Supabase" if salvati_supabase > 0 else "JSON"
-                    st.metric("💾 Storage", location_text)
+                if is_admin:
+                    # Admin: Report dettagliato
+                    st.success(f"🎉 {file_processati}/{total_files} file elaborati con successo!")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("📄 File", file_processati)
+                    with col2:
+                        st.metric("📊 Righe Totali", righe_totali)
+                    with col3:
+                        location_text = "Supabase" if salvati_supabase > 0 else "JSON"
+                        st.metric("💾 Storage", location_text)
+                else:
+                    # Cliente: Messaggio semplice
+                    st.success(f"✅ Fatture caricate con successo!")
             
             # Sparisce dopo 4 secondi
             time.sleep(4)
@@ -4095,12 +4154,10 @@ try:
         logger.info("🔄 FORCE RELOAD attivato dopo categorizzazione AI")
     df_completo = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh)
     
-    # Logging shape e verifica dati (solo console)
+    # Logging shape e verifica dati
     logger.debug(f"DataFrame shape = {df_completo.shape}")
-    logger.debug(f"DataFrame empty = {df_completo.empty}")
     if not df_completo.empty:
-        logger.debug(f"Colonne = {df_completo.columns.tolist()}")
-        logger.debug(f"Prime 3 righe:\n{df_completo.head(3)}")
+        logger.info(f"📊 Caricato: {df_completo['FileOrigine'].nunique()} fatture, {len(df_completo)} righe")
     
     # Rimuovi loading SEMPRE prima di mostrare contenuto
     loading_placeholder.empty()

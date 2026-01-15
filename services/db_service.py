@@ -66,30 +66,50 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     
     dati = []
     
-    # 🔥 CARICA DA SUPABASE
+    # 🔥 CARICA DA SUPABASE CON PAGINAZIONE
     if supabase_client is not None:
         print("🔍 DEBUG: Tentativo caricamento da Supabase...")
         try:
-            response = supabase_client.table("fatture").select("*", count="exact").eq("user_id", user_id).execute()
-            print(f"🔍 DEBUG: Supabase response.count = {response.count}")
-            logger.info(f"📊 CARICAMENTO: user_id={user_id} ha {response.count} righe su Supabase")
+            # Prima query per ottenere il count totale
+            response_count = supabase_client.table("fatture").select("*", count="exact").eq("user_id", user_id).limit(1).execute()
+            total_rows = response_count.count if response_count.count else 0
+            print(f"🔍 DEBUG: Supabase total count = {total_rows}")
+            logger.info(f"📊 CARICAMENTO: user_id={user_id} ha {total_rows} righe su Supabase")
             
-            for row in response.data:
-                dati.append({
-                    "FileOrigine": row["file_origine"],
-                    "NumeroRiga": row["numero_riga"],
-                    "DataDocumento": row["data_documento"],
-                    "Fornitore": row["fornitore"],
-                    "Descrizione": row["descrizione"],
-                    "Quantita": row["quantita"],
-                    "UnitaMisura": row["unita_misura"],
-                    "PrezzoUnitario": row["prezzo_unitario"],
-                    "IVAPercentuale": row["iva_percentuale"],
-                    "TotaleRiga": row["totale_riga"],
-                    "Categoria": row["categoria"],
-                    "CodiceArticolo": row["codice_articolo"],
-                    "PrezzoStandard": row.get("prezzo_standard")
-                })
+            # Paginazione per caricare tutte le righe
+            page_size = 1000
+            page = 0
+            
+            while True:
+                offset = page * page_size
+                response = supabase_client.table("fatture").select("*").eq("user_id", user_id).range(offset, offset + page_size - 1).execute()
+                
+                if not response.data:
+                    break
+                
+                for row in response.data:
+                    dati.append({
+                        "FileOrigine": row["file_origine"],
+                        "NumeroRiga": row["numero_riga"],
+                        "DataDocumento": row["data_documento"],
+                        "Fornitore": row["fornitore"],
+                        "Descrizione": row["descrizione"],
+                        "Quantita": row["quantita"],
+                        "UnitaMisura": row["unita_misura"],
+                        "PrezzoUnitario": row["prezzo_unitario"],
+                        "IVAPercentuale": row["iva_percentuale"],
+                        "TotaleRiga": row["totale_riga"],
+                        "Categoria": row["categoria"],
+                        "CodiceArticolo": row["codice_articolo"],
+                        "PrezzoStandard": row.get("prezzo_standard")
+                    })
+                
+                # Se questa pagina ha meno di page_size record, abbiamo finito
+                if len(response.data) < page_size:
+                    break
+                    
+                page += 1
+                print(f"🔍 DEBUG: Caricata pagina {page}, totale righe finora: {len(dati)}")
             
             if len(dati) > 0:
                 logger.info(f"✅ LOAD SUCCESS: {len(dati)} righe caricate da Supabase per user_id={user_id}")
