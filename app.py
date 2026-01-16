@@ -2203,6 +2203,8 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         categorie_disponibili = categorie_fb + categorie_spese
         
         logger.info(f"📋 Categorie disponibili: {len(categorie_disponibili)} ({len(categorie_fb)} F&B + {len(categorie_spese)} spese)")
+        logger.debug(f"📋 Lista categorie F&B: {categorie_fb}")
+        logger.debug(f"📋 Lista categorie Spese: {categorie_spese}")
         
         # ✅ "Da Classificare" NON è un'opzione selezionabile - verrà convertito automaticamente
         

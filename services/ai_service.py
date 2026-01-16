@@ -222,6 +222,9 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     """
     Applica correzioni basate su keyword nel dizionario.
     
+    IMPORTANTE: Ordina keyword per lunghezza decrescente per evitare
+    match parziali errati (es: 'AGLIO' in 'TOVAGLIOLI').
+    
     Args:
         descrizione: testo descrizione prodotto
         categoria_ai: categoria assegnata da AI (fallback)
@@ -234,8 +237,14 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     
     desc_upper = descrizione.upper()
     
-    # Controllo con keyword nel dizionario
-    for keyword, categoria in DIZIONARIO_CORREZIONI.items():
+    # Ordina keyword per lunghezza decrescente per match più precisi
+    # (es: 'TOVAGLIOLI' deve essere controllato prima di 'AGLIO')
+    sorted_keywords = sorted(DIZIONARIO_CORREZIONI.items(), 
+                            key=lambda x: len(x[0]), 
+                            reverse=True)
+    
+    # Controllo con keyword nel dizionario (più lunghe prima)
+    for keyword, categoria in sorted_keywords:
         if keyword in desc_upper:
             return categoria
     
@@ -498,17 +507,18 @@ CATEGORIE DISPONIBILI:
 
 REGOLE CLASSIFICAZIONE:
 1. **DICITURE**: Se descrizione è riferimento documento (DDT, TRASPORTO, BOLLA, RIF), imballo, spedizione → "NOTE E DICITURE"
-2. **MATERIALI NO FOOD**: Pellicole, rotoloni, tovaglioli, carta, detersivi, sacchetti, contenitori → "NO FOOD"
+2. **MATERIALI NO FOOD**: Pellicole, rotoloni, tovaglioli, carta, detersivi, sacchetti, contenitori, bicchieri, coperchi → "NO FOOD"
 3. **BEVANDE**: Distingui:
-   - Alcolici specifici (VINI, BIRRE, AMARI, DISTILLATI)
+   - Alcolici specifici (VINI, BIRRE, AMARI/LIQUORI, DISTILLATI)
    - Generici → "BEVANDE"
    - Acqua → "ACQUA"
    - Caffè → "CAFFÈ"
 4. **SPESE OPERATIVE**: Manutenzione, consulenze, affitto, utenze → categorie SPESE
-5. **FOOD**: Prodotti alimentari per cucina ristorante
+5. **PRODOTTI ALIMENTARI**: Usa SEMPRE categorie specifiche (CARNE, PESCE, VERDURE, FRUTTA, PASTA→SECCO, ecc.)
 
 IMPORTANTE:
-- Usa categoria specifica (es. "CARNE" non "PRODOTTI DA FORNO")
+- NON usare MAI la categoria "FOOD" - usa sempre categorie specifiche!
+- Usa categoria specifica (es. "CARNE" non "SECCO" per pollo)
 - Se incerto tra 2 categorie, scegli più probabile per ristorante
 - "Da Classificare" SOLO se impossibile determinare
 
@@ -532,10 +542,15 @@ ARTICOLI DA CLASSIFICARE:
         dati = json.loads(testo)
         categorie_gpt = dati.get("categorie", [])
         
-        # Combina risultati memoria + GPT
+        # Combina risultati memoria + GPT con validazione
         for idx, desc in enumerate(da_chiedere_gpt):
             if idx < len(categorie_gpt):
-                risultati[desc] = categorie_gpt[idx]
+                cat = categorie_gpt[idx]
+                # ⚠️ VALIDAZIONE: Blocca categorie non valide come "FOOD"
+                if cat not in TUTTE_LE_CATEGORIE and cat != "Da Classificare":
+                    logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → applicando dizionario")
+                    cat = applica_correzioni_dizionario(desc, "Da Classificare")
+                risultati[desc] = cat
             else:
                 risultati[desc] = "Da Classificare"
         

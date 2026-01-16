@@ -1690,13 +1690,23 @@ if tab2:
         # EXPANDER PER MODIFICA CATEGORIA
         if st.session_state.get(f"editing_{idx}", False):
             with st.expander(f"🔧 Modifica: {descrizione[:30]}...", expanded=True):
+                # Usa categorie standardizzate da constants.py + NOTE E DICITURE solo qui
+                from config.constants import (
+                    CATEGORIE_FOOD_BEVERAGE, 
+                    CATEGORIE_MATERIALI, 
+                    CATEGORIE_SPESE_OPERATIVE
+                )
+                
+                # Combina e ordina categorie
+                categorie_fb = sorted(CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI)
+                categorie_spese = sorted(CATEGORIE_SPESE_OPERATIVE)
+                
+                # NOTE E DICITURE disponibile SOLO nel tab Review Righe €0
+                categorie_review = ["NOTE E DICITURE"] + categorie_spese + categorie_fb
+                
                 nuova_categoria = st.selectbox(
                     "Nuova categoria:",
-                    ["🥩 CARNE", "🐟 PESCE", "🥬 VERDURE", "🍝 PASTA RISO", 
-                     "🧀 FORMAGGI", "🥛 LATTICINI", "🍞 PANE", "🛢️ OLIO",
-                     "🍕 PIZZA", "🍰 PASTICCERIA", "☕ CAFFÈ", "🍺 BIRRE",
-                     "🍷 VINI", "🧃 BEVANDE", "💧 ACQUA", "🧊 SURGELATI",
-                     "📦 NO FOOD", "📝 NOTE E DICITURE", "❓ Da Classificare"],
+                    categorie_review,
                     key=f"newcat_{idx}"
                 )
                 

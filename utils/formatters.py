@@ -404,41 +404,40 @@ def calcola_prezzo_standard_intelligente(
 
 def carica_categorie_da_db(supabase_client=None) -> list:
     """
-    Carica categorie dinamiche da Supabase con cache.
-    Fallback a lista hardcoded se database non disponibile.
+    Restituisce SOLO le categorie definite in constants.py.
+    NON carica più dal database per evitare categorie inconsistenti.
     
     Args:
-        supabase_client: istanza Supabase (opzionale, usa fallback se None)
+        supabase_client: istanza Supabase (ignorato, mantenuto per compatibilità)
     
     Returns:
-        list: Lista categorie formato "CARNE" (SENZA EMOJI), ordinata
+        list: Lista categorie formato "CARNE" (SENZA EMOJI), ordinate
+              F&B alfabetico + Spese Generali alfabetico
     
     Note:
-        - Carica da prodotti_master.categoria (DISTINCT)
-        - Categorie pulite senza emoji garantito
-        - Cache 5 minuti (se usato con @st.cache_data)
+        - USA SOLO categorie da constants.py
+        - ESCLUSO "NOTE E DICITURE" (solo per Review Righe €0)
+        - Ordine: F&B alfabetico, poi Spese Generali alfabetico
     """
-    try:
-        # Tenta caricamento da Supabase se client disponibile
-        if supabase_client:
-            # Ottieni categorie uniche da prodotti_master
-            response = supabase_client.table("prodotti_master").select("categoria").execute()
-            
-            if response.data and len(response.data) > 0:
-                # Estrai categorie uniche, ordina alfabeticamente
-                categorie_db = sorted(list(set([row["categoria"] for row in response.data if row.get("categoria")])))
-                
-                if categorie_db:
-                    logger.info(f"✅ Caricate {len(categorie_db)} categorie da prodotti_master")
-                    return categorie_db
-        
-        # Fallback se client non disponibile o query fallisce
-        logger.info("⚠️ Fallback a categorie hardcoded")
-        return _get_categorie_fallback()
-        
-    except Exception as e:
-        logger.warning(f"Errore caricamento categorie da DB: {e}, uso fallback")
-        return _get_categorie_fallback()
+    # Import delle categorie da constants.py per garantire coerenza
+    from config.constants import (
+        CATEGORIE_FOOD_BEVERAGE, 
+        CATEGORIE_MATERIALI, 
+        CATEGORIE_SPESE_OPERATIVE
+    )
+    
+    # Combina tutte le categorie F&B (Food+Beverage + NO FOOD)
+    categorie_fb = CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI  # Include NO FOOD
+    
+    # Ordina alfabeticamente entrambe le liste
+    categorie_fb_sorted = sorted(categorie_fb)
+    categorie_spese_sorted = sorted(CATEGORIE_SPESE_OPERATIVE)
+    
+    # Combina: prima F&B, poi spese generali
+    categorie_finali = categorie_fb_sorted + categorie_spese_sorted
+    
+    logger.info(f"✅ Categorie standardizzate: {len(categorie_finali)} ({len(categorie_fb_sorted)} F&B + {len(categorie_spese_sorted)} spese)")
+    return categorie_finali
 
 
 def _get_categorie_fallback() -> list:
