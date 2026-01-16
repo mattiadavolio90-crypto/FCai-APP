@@ -2312,6 +2312,19 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             # Allinea il pulsante a destra
             st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
             
+            # Selettore ordinamento per export Excel
+            col_ord_label, col_ord_select = st.columns([1, 2])
+            with col_ord_label:
+                st.markdown('<p style="margin-top: 8px; font-size: 14px; font-weight: 500;">Ordina per:</p>', unsafe_allow_html=True)
+            with col_ord_select:
+                ordina_per = st.selectbox(
+                    "ord",
+                    options=["DataDocumento", "Categoria", "Fornitore", "Descrizione", "TotaleRiga"],
+                    index=0,
+                    key="select_ordina_export",
+                    label_visibility="collapsed"
+                )
+            
             st.markdown("""
                 <style>
                 [data-testid="stDownloadButton"] button {
@@ -2322,9 +2335,28 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                 </style>
             """, unsafe_allow_html=True)
             
-            # Prepara Excel
+            # Prepara Excel - USA TUTTI I DATI con ordinamento selezionato
             try:
-                df_export = edited_df.copy()
+                # ✅ ESPORTA TUTTI I DATI (df_editor completo, non solo pagina corrente)
+                # Ma applica le modifiche fatte dall'utente in edited_df
+                df_export = df_editor.copy()
+                
+                # Applica modifiche categorie fatte dall'utente nella pagina corrente
+                if not edited_df.empty and 'Categoria' in edited_df.columns:
+                    # Trova gli indici della pagina corrente in df_editor
+                    for idx in edited_df.index:
+                        if idx in df_export.index:
+                            df_export.at[idx, 'Categoria'] = edited_df.at[idx, 'Categoria']
+                
+                # ✅ APPLICA ORDINAMENTO SELEZIONATO
+                if ordina_per and ordina_per in df_export.columns:
+                    # Ordina in modo decrescente per data e totale, crescente per gli altri
+                    if ordina_per in ['DataDocumento', 'TotaleRiga']:
+                        df_export = df_export.sort_values(by=ordina_per, ascending=False)
+                    else:
+                        df_export = df_export.sort_values(by=ordina_per, ascending=True)
+                
+                # Rimuovi colonna PrezzoStandard se presente
                 if 'PrezzoStandard' in df_export.columns:
                     df_export = df_export.drop(columns=['PrezzoStandard'])
                 

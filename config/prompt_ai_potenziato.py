@@ -31,8 +31,8 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 6. **CARNE** - Carni rosse, bianche, selvaggina, preparati
    Esempi: "PETTO POLLO GR600X4", "VITELLO S/O KG5", "BISTECCA MANZO", "SALSICCIA KG2,75"
 
-7. **CONSERVE** - Marmellate, confetture, conserve, sott'olio, sottaceti, olive
-   Esempi: "MARMELLATA FRAGOLA", "CONFETTURA", "GIARDINIERA", "OLIVE TAGGIASCHE", "CAPPERI"
+7. **CONSERVE** - Marmellate, confetture, sott'olio, sottaceti, olive, scatolame (tonno, pelati, legumi)
+   Esempi: "MARMELLATA FRAGOLA", "OLIVE TAGGIASCHE", "TONNO SCATOLA", "PELATI KG400", "FAGIOLI SCATOLA"
 
 8. **DISTILLATI** - Superalcolici (vodka, gin, rum, whisky, brandy)
    Esempi: "VODKA", "GIN GORDON", "RUM BACARDI", "WHISKY JOHNNIE WALKER", "COGNAC"
@@ -67,11 +67,11 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 18. **SALUMI** - Affettati, prosciutti, mortadella, pancetta, speck, coppa, bresaola
     Esempi: "PROSCIUTTO CRUDO", "MORTADELLA", "SPECK", "PANCETTA CUBETTI", "SALAME"
 
-19. **SCATOLAME** - Tonno scatola, legumi in scatola, pelati, mais, piselli
-    Esempi: "TONNO SCATOLA", "FAGIOLI IN SCATOLA", "LENTICCHIE", "PELATI KG400"
-
-20. **SECCO** - Pasta secca, riso, farina, zucchero, biscotti secchi
+19. **SECCO** - Pasta secca, riso, farina, zucchero, biscotti secchi
     Esempi: "PASTA PENNE KG500", "RISO ARBORIO", "FARINA 00", "BISCOTTI"
+
+20. **SHOP** - Prodotti di compravendita (sigarette, caramelle, snack, patatine, gomme)
+    Esempi: "CICCHE", "CARAMELLE GOLIA", "PATATINE", "CHIPS", "SNACK", "KINDER", "MARS"
 
 21. **SPEZIE E AROMI** - Spezie, erbe aromatiche, condimenti secchi
     Esempi: "PEPE NERO", "ORIGANO SECCO", "ROSMARINO", "VANIGLIA", "CURRY"
