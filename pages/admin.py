@@ -1901,14 +1901,23 @@ def tab_memoria_globale_unificata():
     col_search, col_cat, col_reset = st.columns([3, 2, 1])
     
     with col_search:
+        # Inizializza session_state se non esiste
+        if 'search_memoria' not in st.session_state:
+            st.session_state.search_memoria = ""
+        
         search_text = st.text_input(
             "🔍 Cerca descrizione",
+            value=st.session_state.search_memoria,
             placeholder="es: POMODORO, OLIO, PASTA",
             key="search_memoria"
         )
     
     with col_cat:
         categorie = st.session_state.categorie_cached
+        # Inizializza session_state se non esiste
+        if 'filtro_cat' not in st.session_state:
+            st.session_state.filtro_cat = "Tutte"
+        
         filtro_cat = st.selectbox(
             "Filtra categoria",
             ["Tutte"] + categorie,

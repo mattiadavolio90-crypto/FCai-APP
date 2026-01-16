@@ -2202,11 +2202,12 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         # Combina: prima F&B, poi spese generali
         categorie_disponibili = categorie_fb + categorie_spese
         
-        logger.info(f"📋 Categorie disponibili: {len(categorie_disponibili)} ({len(categorie_fb)} F&B + {len(categorie_spese)} spese)")
+        # ✅ Aggiungi "Da Classificare" come prima opzione (per prodotti non ancora categorizzati)
+        categorie_disponibili = ["Da Classificare"] + categorie_disponibili
+        
+        logger.info(f"📋 Categorie disponibili: {len(categorie_disponibili)} (1 placeholder + {len(categorie_fb)} F&B + {len(categorie_spese)} spese)")
         logger.debug(f"📋 Lista categorie F&B: {categorie_fb}")
         logger.debug(f"📋 Lista categorie Spese: {categorie_spese}")
-        
-        # ✅ "Da Classificare" NON è un'opzione selezionabile - verrà convertito automaticamente
         
         # 🔧 FIX CELLE BIANCHE ULTRA-AGGRESSIVO (Streamlit bug workaround)
         # Se una cella ha un valore NON nelle opzioni, Streamlit la mostra VUOTA
@@ -2214,13 +2215,15 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         categorie_valide_set = set(categorie_disponibili)
         
         def valida_categoria(cat):
-            """Assicura che categoria sia nelle opzioni disponibili o None se vuota"""
-            if pd.isna(cat) or cat is None or str(cat).strip() == '' or str(cat).strip() == 'Da Classificare':
-                return None  # Lascia vuoto se non categorizzato
+            """Assicura che categoria sia nelle opzioni disponibili o 'Da Classificare' se vuota"""
+            if pd.isna(cat) or cat is None or str(cat).strip() == '':
+                return 'Da Classificare'  # Mostra testo invece di cella vuota
             cat_str = str(cat).strip()
+            if cat_str == 'Da Classificare':
+                return 'Da Classificare'  # Mantieni esplicito
             if cat_str not in categorie_valide_set:
-                logger.warning(f"⚠️ Categoria '{cat_str}' non nelle opzioni! → None (vuoto)")
-                return None  # Lascia vuoto se categoria non valida
+                logger.warning(f"⚠️ Categoria '{cat_str}' non nelle opzioni! → 'Da Classificare'")
+                return 'Da Classificare'  # Categoria non valida = da classificare
             return cat_str
         
         # Applica validazione a TUTTE le categorie
@@ -3948,7 +3951,7 @@ if uploaded_files:
         if not is_admin and len(file_gia_processati) > 0:
             # Cliente: Messaggio semplice e chiaro
             totale_duplicati = len(file_gia_processati) + len(duplicati_interni)
-            st.info(f"ℹ️ {totale_duplicati} fattura{'e' if totale_duplicati > 1 else ''} già caricata{'e' if totale_duplicati > 1 else ''} in precedenza")
+            st.info(f"ℹ️ {totale_duplicati} fattura{'e' if totale_duplicati > 1 else ''} già caricata{' in precedenza' if totale_duplicati == 1 else 'e in precedenza'}")
     
     if file_nuovi:
         # Crea placeholder per loading AI
