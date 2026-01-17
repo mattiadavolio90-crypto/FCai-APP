@@ -262,8 +262,11 @@ DIZIONARIO_CORREZIONI = {
     "LARDO": "SALUMI",
     "GUANCIALE": "SALUMI",
     # ✅ Richiesta: SALSICCIA e varianti → CARNE (non SALUMI)
+    # NOTA: Deve stare PRIMA di VASCHETTA nel dizionario (sorted by length)
     "SALSICCIA": "CARNE",
     "SALSICCE": "CARNE",
+    "SALSICCINA": "CARNE",
+    "SALSICCINE": "CARNE",
     "SALSICC": "CARNE",
     "SALSIC": "CARNE",
     "WURSTEL": "SALUMI",
@@ -563,6 +566,7 @@ DIZIONARIO_CORREZIONI = {
     "TOVAGLIETTE": "NO FOOD",
     "VASCHETTA": "NO FOOD",
     "VASCHETTE": "NO FOOD",
+    "VASCHETTINA": "NO FOOD",
     "COPPETTA": "NO FOOD",
     "COPPETTE": "NO FOOD",
     "COPPA GELATO": "GELATI",  # Eccezione: se contiene GELATO è il prodotto

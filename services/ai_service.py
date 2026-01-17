@@ -234,10 +234,14 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
 
 def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     """
-    Applica correzioni basate su keyword nel dizionario.
+    Applica correzioni basate su keyword nel dizionario con PRIORITÀ INTELLIGENTE.
     
-    IMPORTANTE: Ordina keyword per lunghezza decrescente per evitare
-    match parziali errati (es: 'AGLIO' in 'TOVAGLIOLI').
+    STRATEGIA: I CIBI hanno priorità sui CONTENITORI.
+    - Se trova un ALIMENTO (SALSICCIA, CAROTE, etc.), lo classifica per quello
+    - Se trova SOLO un CONTENITORE (VASC, CONF, BUSTA, etc.), classifica NO FOOD
+    - Ignora i contenitori se c'è un alimento presente
+    
+    Ordina keyword per lunghezza decrescente dentro ogni categoria di priorità.
     
     Args:
         descrizione: testo descrizione prodotto
@@ -251,15 +255,41 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     
     desc_upper = descrizione.upper()
     
-    # Ordina keyword per lunghezza decrescente per match più precisi
-    # (es: 'TOVAGLIOLI' deve essere controllato prima di 'AGLIO')
-    sorted_keywords = sorted(DIZIONARIO_CORREZIONI.items(), 
-                            key=lambda x: len(x[0]), 
-                            reverse=True)
+    # 🔥 KEYWORDS CONTENITORI/PACKAGING (BASSA PRIORITÀ)
+    # Se non c'è nessun alimento, questi matchano e danno NO FOOD
+    keywords_contenitori = {
+        "VASCHETTA": "NO FOOD",
+        "VASCHETTE": "NO FOOD",
+        "VASCHETTINA": "NO FOOD",
+        "VASC": "NO FOOD",
+        "CONFEZIONE": "NO FOOD",
+        "CONF": "NO FOOD",
+        "BUSTA": "NO FOOD",
+        "SCATOLA": "NO FOOD",
+        "CARTONE": "NO FOOD",
+        "PACCO": "NO FOOD",
+        "BARATTOLO": "NO FOOD",
+        "BOTTIGLIA": "NO FOOD",
+        "LATTINA": "NO FOOD",
+    }
     
-    # Controllo con keyword nel dizionario (più lunghe prima)
-    for keyword, categoria in sorted_keywords:
-        if keyword in desc_upper:
+    # 🍽️ TUTTI GLI ALTRI KEYWORDS (ALTA PRIORITÀ = ALIMENTI)
+    keywords_alimenti = {k: v for k, v in DIZIONARIO_CORREZIONI.items() if k not in keywords_contenitori}
+    
+    import re
+    
+    # STEP 1: Cerca ALIMENTI (priorità alta) - se trovi uno, ritorna subito
+    sorted_alimenti = sorted(keywords_alimenti.items(), key=lambda x: len(x[0]), reverse=True)
+    for keyword, categoria in sorted_alimenti:
+        pattern = r'(^|[\s\W])' + re.escape(keyword) + r'([\s\W]|$)'
+        if re.search(pattern, ' ' + desc_upper + ' '):
+            return categoria
+    
+    # STEP 2: Cerca CONTENITORI (priorità bassa) - solo se nessun alimento trovato
+    sorted_contenitori = sorted(keywords_contenitori.items(), key=lambda x: len(x[0]), reverse=True)
+    for keyword, categoria in sorted_contenitori:
+        pattern = r'(^|[\s\W])' + re.escape(keyword) + r'([\s\W]|$)'
+        if re.search(pattern, ' ' + desc_upper + ' '):
             return categoria
     
     return categoria_ai
