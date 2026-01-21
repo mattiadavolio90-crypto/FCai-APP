@@ -1642,7 +1642,8 @@ if tab2:
         
         # DESCRIZIONE + Badge review
         with col_desc:
-            needs_review_flag = group.iloc[0].get('needs_review', False) if 'needs_review' in group.columns else False
+            # Accesso sicuro a needs_review dalla riga corrente
+            needs_review_flag = row.get('needs_review', False) if 'needs_review' in df_pagina.columns else False
             review_badge = "🔍 " if needs_review_flag else ""
             desc_short = descrizione[:45] + "..." if len(descrizione) > 45 else descrizione
             st.markdown(f"`{review_badge}{desc_short}`")

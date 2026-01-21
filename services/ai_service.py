@@ -209,12 +209,34 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
             locale_dict = _memoria_cache['prodotti_utente'][user_id]
             if descrizione in locale_dict:
                 categoria = locale_dict[descrizione]
+                
+                # ✅ Traccia come memoria per icona 🧠
+                try:
+                    import streamlit as st
+                    if 'righe_memoria_appena_categorizzate' not in st.session_state:
+                        st.session_state.righe_memoria_appena_categorizzate = []
+                    if descrizione not in st.session_state.righe_memoria_appena_categorizzate:
+                        st.session_state.righe_memoria_appena_categorizzate.append(descrizione)
+                except Exception:
+                    pass  # Ignora se streamlit non disponibile
+                
                 return categoria
         
         # 2️⃣ Check memoria GLOBALE (da cache, 0 query!) se abilitata
         if not _disable_global_memory:
             if descrizione in _memoria_cache['prodotti_master']:
                 categoria = _memoria_cache['prodotti_master'][descrizione]
+                
+                # ✅ Traccia come memoria per icona 🧠
+                try:
+                    import streamlit as st
+                    if 'righe_memoria_appena_categorizzate' not in st.session_state:
+                        st.session_state.righe_memoria_appena_categorizzate = []
+                    if descrizione not in st.session_state.righe_memoria_appena_categorizzate:
+                        st.session_state.righe_memoria_appena_categorizzate.append(descrizione)
+                except Exception:
+                    pass  # Ignora se streamlit non disponibile
+                
                 return categoria
         
         # 3️⃣ Fallback

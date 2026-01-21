@@ -281,10 +281,7 @@ st.markdown("""
         });
         document.querySelectorAll('[role="contentinfo"]').forEach(el => el.remove());
         document.querySelectorAll('[data-testid="stFooter"]').forEach(el => el.remove());
-            st.session_state.force_empty_until_upload = False
-            st.session_state.files_processati_sessione = set()
-            st.cache_data.clear()
-            st.success("✅ Reset completato! Ora clicca la X sui file sopra per pulirli.")
+        
         // Rimuovi decorazioni
         document.querySelectorAll('[data-testid="stDecoration"]').forEach(el => el.remove());
         document.querySelectorAll('[data-testid="stToolbar"]').forEach(el => el.remove());
@@ -2098,21 +2095,21 @@ def mostra_statistiche(df_completo):
 
     with col3:
         st.markdown("""
-        <div style="background: #f8f9fa; border-left: 4px solid #4facfe;
+        <div style="background: #f8f9fa; border-left: 4px solid #43e97b;
                     padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
                     height: 130px; display: flex; flex-direction: column; justify-content: center;">
-            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">🛒 Spesa Generale</p>
-            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">€ """ + f"{spesa_generale:.2f}" + """</h2>
+            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">🏪 N. Fornitori Analizzati F&B</p>
+            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">""" + str(num_fornitori) + """</h2>
         </div>
         """, unsafe_allow_html=True)
 
     with col4:
         st.markdown("""
-        <div style="background: #f8f9fa; border-left: 4px solid #43e97b;
+        <div style="background: #f8f9fa; border-left: 4px solid #4facfe;
                     padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
                     height: 130px; display: flex; flex-direction: column; justify-content: center;">
-            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">🏪 N. Fornitori Analizzati</p>
-            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">""" + str(num_fornitori) + """</h2>
+            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">🛒 Spesa Generale</p>
+            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">€ """ + f"{spesa_generale:.2f}" + """</h2>
         </div>
         """, unsafe_allow_html=True)
 
@@ -2321,12 +2318,18 @@ def mostra_statistiche(df_completo):
             righe_man = st.session_state.get('righe_modificate_manualmente', [])
             man_set = set(str(d).strip() for d in righe_man)
             
+            # MEMORIA (🧠)
+            righe_mem = st.session_state.get('righe_memoria_appena_categorizzate', [])
+            mem_set = set(str(d).strip() for d in righe_mem)
+            
+            # Priorità: ✋ > 🤖 > 📚 > 🧠 > vuoto
             df_editor['Fonte'] = df_editor['Descrizione'].apply(
                 lambda d: '✋' if str(d).strip() in man_set else
                           '🤖' if str(d).strip() in ai_set else
-                          '📚' if str(d).strip() in diz_set else ''
+                          '📚' if str(d).strip() in diz_set else
+                          '🧠' if str(d).strip() in mem_set else ''
             )
-            logger.info(f"✅ Colonna Fonte: {len(man_set)} manuali, {len(ai_set)} AI, {len(diz_set)} dizionario")
+            logger.info(f"✅ Colonna Fonte: {len(man_set)} manuali, {len(ai_set)} AI, {len(diz_set)} dizionario, {len(mem_set)} memoria")
         
         # 🧪 TEST AGGREGAZIONE (diagnostico - zero impatto UI)
         if 'Descrizione' in df_editor.columns:
@@ -2418,12 +2421,6 @@ def mostra_statistiche(df_completo):
                 df_editor.at[idx, 'PrezzoStandard'] = prezzo_std
         
         # ===== FINE CALCOLO =====
-        
-        st.info("""
-🤖 **Calcolo Automatico Prezzo di Listino**  
-L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.  
-✏️ Se il calcolo non è disponibile, puoi modificarlo manualmente nella colonna Listino.
-        """)
 
         num_righe = len(df_editor)
         
@@ -2485,9 +2482,6 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             
             # Usa vista aggregata
             df_editor_paginato = df_editor_agg
-            
-            # Info utente
-            st.info(f"📊 **{len(df_editor_agg)} prodotti unici** (da {len(df_editor)} righe)")
         else:
             df_editor_paginato = df_editor.copy()
         
@@ -3631,7 +3625,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             # ============================================
             # TABELLA 1: CATEGORIE × MESI
             # ============================================
-            st.markdown("#### 📊 Spesa per Categoria per Mese")
+            st.markdown("#### 📊 Spesa per Categoria mensile")
             
             # Aggiungi colonna Mese con formato italiano
             df_spese_con_mese = df_spese_generali.copy()
@@ -3735,7 +3729,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             # ============================================
             # TABELLA 2: FORNITORI × MESI
             # ============================================
-            st.markdown("#### 🏪 Spesa per Fornitore per Mese")
+            st.markdown("#### 🏪 Spesa per Fornitore mensile")
             
             # Pivot: Fornitori × Mesi (usa stesso df con mesi formattati)
             pivot_forn = df_spese_con_mese.pivot_table(
