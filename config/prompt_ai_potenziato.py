@@ -117,7 +117,9 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 🎯 REGOLE CLASSIFICAZIONE (PRIORITÀ)
 ═══════════════════════════════════════════════════════════════════
 
-1. **DICITURE/NOTE**: Se descrizione è riferimento documento, trasporto, bolla → "NOTE E DICITURE" (NO, non è categoria, lasciare da classificare)
+1. **SERVIZI/SPESE/PENALI**: Se descrizione è servizio, penale, mora, interessi, trasporto, spese gestione → "SERVIZI E CONSULENZE"
+   - Parole chiave: servizio, mora, indennità, interessi, penale, gestione, amministrativa, fatturazione, contributo
+   - ⚠️ NON usare MAI "NOTE E DICITURE" - categoria riservata solo per admin!
 
 2. **MATERIALI PRIMA**: Se contiene parole chiave materiali/non-edibili → "NO FOOD"
    - Parole chiave: pellicola, carta, towel, tovagliolo, bicchiere, piatto, detersivo, posate, cannuccia
@@ -143,6 +145,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 ═══════════════════════════════════════════════════════════════════
 
 ❌ NON usare MAI "FOOD" - categoria non esiste!
+❌ NON usare MAI "NOTE E DICITURE" - categoria riservata solo admin!
 ❌ NON mettere CROSTATINE in FRUTTA - sono PASTICCERIA
 ❌ NON mettere CANNONCINI BURRO in LATTICINI - sono PASTICCERIA
 ❌ NON mettere SALAME DI CIOCCOLATO in SALUMI - è PASTICCERIA

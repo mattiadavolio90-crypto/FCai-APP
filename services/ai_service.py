@@ -656,7 +656,8 @@ def classifica_con_ai(
         for idx, desc in enumerate(da_chiedere_gpt):
             if idx < len(categorie_gpt):
                 cat = categorie_gpt[idx]
-                # ⚠️ VALIDAZIONE: Blocca categorie non valide come "FOOD"
+                
+                # ⚠️ VALIDAZIONE: Blocca categorie non valide (incluso NOTE E DICITURE)
                 if cat not in TUTTE_LE_CATEGORIE and cat != "Da Classificare":
                     logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → applicando dizionario")
                     cat = applica_correzioni_dizionario(desc, "Da Classificare")
