@@ -25,6 +25,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.formatters import carica_categorie_da_db
 from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria
 
+# Importa costanti per filtri
+from config.constants import FORNITORI_NO_FOOD_KEYWORDS, CATEGORIE_SPESE_GENERALI
+
 # ============================================================
 # SETUP
 # ============================================================
@@ -1026,13 +1029,14 @@ if tab1:
                 
                 # Query fatture per questo utente (con conteggio esatto)
                 query_fatture = supabase.table('fatture')\
-                    .select('file_origine, id, created_at', count='exact')\
+                    .select('file_origine, id, created_at, data_documento, totale_riga, fornitore, categoria', count='exact')\
                     .eq('user_id', user_id)\
                     .execute()
                 
                 num_fatture = 0
                 num_righe = 0
                 ultimo_caricamento = None
+                totale_costi_complessivi = 0
                 
                 if query_fatture.data:
                     # Conta file unici
@@ -1051,6 +1055,21 @@ if tab1:
                     
                     if date_caricate:
                         ultimo_caricamento = max(date_caricate)
+                    
+                    # Calcola totale costi complessivi (TUTTE le righe ESCLUSE NOTE E DICITURE)
+                    for r in query_fatture.data:
+                        try:
+                            categoria = str(r.get('categoria', '')).strip()
+                            
+                            # Escludi NOTE E DICITURE (righe a 0€)
+                            if categoria == '📝 NOTE E DICITURE':
+                                continue
+                            
+                            totale_riga = float(r.get('totale_riga', 0) or 0)
+                            totale_costi_complessivi += totale_riga
+                        except Exception as e:
+                            logger.warning(f"Errore calcolo costo riga {r.get('id')}: {e}")
+                            continue
                 
                 stats_clienti.append({
                     'user_id': user_id,
@@ -1059,13 +1078,14 @@ if tab1:
                     'attivo': user_data.get('attivo', True),
                     'num_fatture': num_fatture,
                     'num_righe': num_righe,
-                    'ultimo_caricamento': ultimo_caricamento
+                    'ultimo_caricamento': ultimo_caricamento,
+                    'totale_costi': totale_costi_complessivi
                 })
             
             df_clienti = pd.DataFrame(stats_clienti)
             
             # ===== METRICHE GENERALI =====
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
                 st.metric("Totale Clienti", len(df_clienti))
             with col2:
@@ -1077,6 +1097,9 @@ if tab1:
             with col4:
                 totale_righe = int(df_clienti['num_righe'].sum())
                 st.metric("Totale Righe", totale_righe)
+            with col5:
+                totale_costi_globale = df_clienti['totale_costi'].sum()
+                st.metric("Totale Costi", f"€{totale_costi_globale:,.2f}")
             
             st.markdown("---")
             st.markdown("#### 👥 Lista Clienti")
@@ -1086,7 +1109,7 @@ if tab1:
             
             # ===== TABELLA CLIENTI CON IMPERSONAZIONE =====
             for idx, row in df_clienti_sorted.iterrows():
-                col1, col2, col3, col4, col5, col6 = st.columns([2.5, 2, 1, 1, 1.5, 1])
+                col1, col2, col3, col4, col5, col6, col7 = st.columns([2.5, 2, 1, 1, 1.5, 1.5, 1])
                 
                 with col1:
                     status_icon = "🟢" if row['attivo'] else "🔴"
@@ -1102,6 +1125,14 @@ if tab1:
                     st.caption(f"📊 {row['num_righe']}")
                 
                 with col5:
+                    # Mostra totale costi complessivi formattato
+                    costi_totali = row.get('totale_costi', 0)
+                    if costi_totali > 0:
+                        st.caption(f"💰 €{costi_totali:,.2f}")
+                    else:
+                        st.caption("💰 €0,00")
+                
+                with col6:
                     if pd.notna(row['ultimo_caricamento']):
                         now_aware = pd.Timestamp.now(tz=timezone.utc)
                         giorni_fa = (now_aware - row['ultimo_caricamento']).days
@@ -1117,7 +1148,7 @@ if tab1:
                     else:
                         st.caption("⚪ Mai")
                 
-                with col6:
+                with col7:
                     # ===== BOTTONI AZIONI =====
                     col_entra, col_menu = st.columns([1, 0.3])
                     

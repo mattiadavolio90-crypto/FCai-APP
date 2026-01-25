@@ -1421,15 +1421,12 @@ def mostra_statistiche(df_completo):
     # Recupera user_id da session_state (necessario per get_fatture_stats)
     user_id = st.session_state.user_data["id"]
     
-    # Crea pattern per esclusione fornitori NO FOOD (usa costante importata)
-    pattern_no_food = '|'.join(FORNITORI_NO_FOOD_KEYWORDS)
-    mask_fornitori_no_food = df_completo['Fornitore'].str.upper().str.contains(pattern_no_food, na=False, regex=True)
-    
+    # Separa F&B da Spese Generali solo per categoria (NON escludere fornitori)
     mask_spese = df_completo['Categoria'].isin(CATEGORIE_SPESE_GENERALI)
     df_spese_generali_completo = df_completo[mask_spese].copy()
     
-    # F&B: Escludi spese generali E fornitori sicuramente NO FOOD
-    df_food_completo = df_completo[(~mask_spese) & (~mask_fornitori_no_food)].copy()
+    # F&B: Escludi solo le categorie spese generali (NON i fornitori)
+    df_food_completo = df_completo[~mask_spese].copy()
     
     # Spazio sotto il box arancione
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
