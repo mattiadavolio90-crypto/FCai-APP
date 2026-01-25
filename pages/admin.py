@@ -1029,7 +1029,7 @@ if tab1:
                 
                 # Query fatture per questo utente (con conteggio esatto)
                 query_fatture = supabase.table('fatture')\
-                    .select('file_origine, id, created_at, data_documento, totale_riga, fornitore, categoria', count='exact')\
+                    .select('file_origine, id, created_at, data_documento, totale_riga, fornitore, categoria, needs_review', count='exact')\
                     .eq('user_id', user_id)\
                     .execute()
                 
@@ -1056,13 +1056,18 @@ if tab1:
                     if date_caricate:
                         ultimo_caricamento = max(date_caricate)
                     
-                    # Calcola totale costi complessivi (TUTTE le righe ESCLUSE NOTE E DICITURE)
+                    # Calcola totale costi complessivi (ESCLUSE NOTE E DICITURE e needs_review)
                     for r in query_fatture.data:
                         try:
                             categoria = str(r.get('categoria', '')).strip()
+                            needs_review = r.get('needs_review', False)
                             
                             # Escludi NOTE E DICITURE (righe a 0€)
                             if categoria == '📝 NOTE E DICITURE':
+                                continue
+                            
+                            # Escludi righe in review (qualsiasi categoria)
+                            if needs_review:
                                 continue
                             
                             totale_riga = float(r.get('totale_riga', 0) or 0)
