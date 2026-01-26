@@ -1,11 +1,11 @@
-"""
+﻿"""
 Costanti, categorie e regex precompilate per FCI_PROJECT.
 
 Questo modulo contiene:
 - Regex precompilate per parsing e normalizzazione
 - Categorie Food & Beverage e Spese Generali
 - Dizionario correzioni intelligente per classificazione
-- Lista fornitori NO FOOD
+- Lista fornitori Spese Generali
 - Colori per grafici Plotly
 
 Tutte le regex sono precompilate all'avvio per ottimizzazione performance.
@@ -36,7 +36,7 @@ REGEX_UNITA_MISURA = [
     re.compile(r'\bCONF\b', re.IGNORECASE),
     re.compile(r'\bCONFEZIONE\b', re.IGNORECASE),
     re.compile(r'\bNR\b', re.IGNORECASE),
-    re.compile(r'\bN°\b', re.IGNORECASE),
+    re.compile(r'\bNÂ°\b', re.IGNORECASE),
     re.compile(r'\bNUMERO\b', re.IGNORECASE),
     re.compile(r'\bCT\b', re.IGNORECASE),
     re.compile(r'\bCTN\b', re.IGNORECASE),
@@ -51,7 +51,7 @@ REGEX_UNITA_MISURA = [
     re.compile(r'\bVASETTO\b', re.IGNORECASE)
 ]
 
-REGEX_NUMERI_UNITA = re.compile(r'\b\d+[.,]?\d*\s*(?:KG|G|L|ML|PZ|%|EUR|€)?\b', re.IGNORECASE)
+REGEX_NUMERI_UNITA = re.compile(r'\b\d+[.,]?\d*\s*(?:KG|G|L|ML|PZ|%|EUR|â‚¬)?\b', re.IGNORECASE)
 
 REGEX_SOSTITUZIONI = {
     re.compile(r'\bINT\.?\b', re.IGNORECASE): 'INTERO',
@@ -129,20 +129,21 @@ CATEGORIE_FOOD_BEVERAGE = [
 # ============================================
 # CATEGORIE MATERIALI E CONSUMABILI (F&B!)
 # ============================================
-# IMPORTANTE: NO FOOD È CONSIDERATO F&B!
+# IMPORTANTE: MATERIALE DI CONSUMO Ãˆ CONSIDERATO F&B!
 # Contiene materiali di consumo per il ristorante:
 # - Tovaglioli, piatti/bicchieri usa e getta
 # - Pellicole, contenitori asporto, buste
 # - Detergenti per stoviglie, spugne
+# - Guanti, cannucce, posate monouso
 # Questi prodotti DEVONO apparire negli alert/sconti
-CATEGORIE_MATERIALI = ["NO FOOD"]
+CATEGORIE_MATERIALI = ["MATERIALE DI CONSUMO"]
 
 
 # ============================================
 # CATEGORIE SPESE OPERATIVE (NON F&B)
 # ============================================
 # IMPORTANTE: Queste sono le UNICHE 3 categorie NON considerate Food & Beverage
-# TUTTO IL RESTO è F&B (incluso NO FOOD = materiali consumo ristorante!)
+# TUTTO IL RESTO Ã¨ F&B (incluso MATERIALE DI CONSUMO = materiali consumo ristorante!)
 CATEGORIE_SPESE_OPERATIVE = [
     "SERVIZI E CONSULENZE",        # Es: Consulenze HACCP, Commercialista
     "UTENZE E LOCALI",              # Es: Bollette ENEL, Affitto locale
@@ -151,26 +152,27 @@ CATEGORIE_SPESE_OPERATIVE = [
 
 
 # ============================================
-# TUTTE LE CATEGORIE (per AI e retrocompatibilità)
+# TUTTE LE CATEGORIE (per AI e retrocompatibilitÃ )
 # ============================================
-# NOTA: Queste liste statiche sono mantenute per retrocompatibilità
+# NOTA: Queste liste statiche sono mantenute per retrocompatibilitÃ 
 # L'app usa carica_categorie_da_db() per dropdown e UI
 TUTTE_LE_CATEGORIE = CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI + CATEGORIE_SPESE_OPERATIVE
 
 
-# Retrocompatibilità con codice esistente
+# RetrocompatibilitÃ  con codice esistente
 CATEGORIE_FOOD = CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI
 CATEGORIE_SPESE_GENERALI = CATEGORIE_SPESE_OPERATIVE
 
 
 # ============================================
-# FORNITORI NO FOOD (utenze, telecom, tech)
+# FORNITORI SPESE GENERALI (utenze, telecom, tech)
 # ============================================
 # Lista unificata di fornitori che sono SEMPRE spese generali/utenze
-# Usata per filtrare automaticamente fornitori non-food
-FORNITORI_NO_FOOD_KEYWORDS = [
+# NON confondere con MATERIALE DI CONSUMO (pellicole, guanti, detersivi)
+# Questi sono fornitori di SERVIZI, non di prodotti
+FORNITORI_SPESE_GENERALI_KEYWORDS = [
     'TIM', 'TELECOM', 'VODAFONE', 'WIND', 'ILIAD', 'FASTWEB',
-    'ENEL', 'ENI', 'A2A', 'EDISON', 'GAS', 'LUCE', 'ENERGIA',
+    'ENEL', 'ENI', 'A2A', 'EDISON',
     'AMAZON', 'MEDIAWORLD', 'UNIEURO', 'LEROY MERLIN',
     'BANCA', 'ASSICURAZ', 'POSTALE', 'POSTE ITALIANE', 'GOOGLE'
 ]
@@ -179,8 +181,8 @@ FORNITORI_NO_FOOD_KEYWORDS = [
 # ============================================
 # DIZIONARIO CORREZIONI INTELLIGENTE
 # ============================================
-# Mappa keyword → categoria per classificazione rapida
-# Usato quando AI non è disponibile o per validazione
+# Mappa keyword â†’ categoria per classificazione rapida
+# Usato quando AI non Ã¨ disponibile o per validazione
 DIZIONARIO_CORREZIONI = {
     # ===== CARNE =====
     "POLLO": "CARNE",
@@ -222,7 +224,7 @@ DIZIONARIO_CORREZIONI = {
     "TROTA": "PESCE",
     "SPIGOLA": "PESCE",
     "MERLUZZO": "PESCE",
-    "BACCALÀ": "PESCE",
+    "BACCALÃ€": "PESCE",
     "SOGLIOLA": "PESCE",
     "PESCE SPADA": "PESCE",
     "ACCIUGHE": "PESCE",
@@ -262,7 +264,7 @@ DIZIONARIO_CORREZIONI = {
     "COPPA": "SALUMI",
     "LARDO": "SALUMI",
     "GUANCIALE": "SALUMI",
-    # ✅ Richiesta: SALSICCIA e varianti → CARNE (non SALUMI)
+    # âœ… Richiesta: SALSICCIA e varianti â†’ CARNE (non SALUMI)
     # NOTA: Deve stare PRIMA di VASCHETTA nel dizionario (sorted by length)
     "SALSICCIA": "CARNE",
     "SALSICCE": "CARNE",
@@ -271,7 +273,7 @@ DIZIONARIO_CORREZIONI = {
     "SALSICC": "CARNE",
     "SALSIC": "CARNE",
     "WURSTEL": "SALUMI",
-    "WÜRSTEL": "SALUMI",
+    "WÃœRSTEL": "SALUMI",
     
     # ===== UOVA =====
     "UOVA": "UOVA",
@@ -420,7 +422,7 @@ DIZIONARIO_CORREZIONI = {
     "BOLLI": "SERVIZI E CONSULENZE",
     "SPESE BANCARIE": "SERVIZI E CONSULENZE",
     "COMMISSIONI": "SERVIZI E CONSULENZE",
-    "RAGÙ": "SALSE E CREME",
+    "RAGÃ™": "SALSE E CREME",
     "SUGO": "SALSE E CREME",
     "BESCIAMELLA": "SALSE E CREME",
     "SALSA": "SALSE E CREME",
@@ -453,14 +455,14 @@ DIZIONARIO_CORREZIONI = {
     "GIARDINIERA": "SCATOLAME E CONSERVE",
     
     # ===== CAFFE E THE =====
-    "CAFFÈ": "CAFFE E THE",
+    "CAFFÃˆ": "CAFFE E THE",
     "CAFFE": "CAFFE E THE",
     "CAFFE'": "CAFFE E THE",
     "ESPRESSO": "CAFFE E THE",
     "CAPSULE": "CAFFE E THE",
     "CIALDE": "CAFFE E THE",
     "THE": "CAFFE E THE",
-    "TÈ": "CAFFE E THE",
+    "TÃˆ": "CAFFE E THE",
     "TISANA": "CAFFE E THE",
     "TISANE": "CAFFE E THE",
     "INFUSO": "CAFFE E THE",
@@ -525,16 +527,16 @@ DIZIONARIO_CORREZIONI = {
     "TORTA": "PASTICCERIA",
     "DOLCE": "PASTICCERIA",
     "CROSTATA": "PASTICCERIA",
-    "TIRAMISÙ": "PASTICCERIA",
+    "TIRAMISÃ™": "PASTICCERIA",
     "PANNA COTTA": "PASTICCERIA",
     "MOUSSE": "PASTICCERIA",
     "CHEESECAKE": "PASTICCERIA",
     "MILLEFOGLIE": "PASTICCERIA",
     "CANNOLI": "PASTICCERIA",
     "PROFITEROLES": "PASTICCERIA",
-    "BIGNÈ": "PASTICCERIA",
+    "BIGNÃˆ": "PASTICCERIA",
     "ARAGOSTELLE": "PASTICCERIA",  # Dolci a forma di aragosta (con pistacchio/cioccolato)
-    "TARTUFI": "PASTICCERIA",  # Default per dolci (se è tartufo vero, viene sovrascritto da admin)
+    "TARTUFI": "PASTICCERIA",  # Default per dolci (se Ã¨ tartufo vero, viene sovrascritto da admin)
     "SACHER": "PASTICCERIA",
     "NOCCIOL": "PASTICCERIA",
     "MUFFIN": "PASTICCERIA",
@@ -587,102 +589,102 @@ DIZIONARIO_CORREZIONI = {
     "GHIACCIO": "VARIE BAR",
     "ZUCCHERO BAR": "VARIE BAR",
     
-    # ===== MATERIALI CONSUMO -> NO FOOD =====
-    "BUSTINE": "NO FOOD",
-    "PALETTE": "NO FOOD",
-    "CANNUCCE": "NO FOOD",
-    "TOVAGLIETTE": "NO FOOD",
-    "VASCHETTA": "NO FOOD",
-    "VASCHETTE": "NO FOOD",
-    "VASCHETTINA": "NO FOOD",
-    "COPPETTA": "NO FOOD",
-    "COPPETTE": "NO FOOD",
-    "COPPA GELATO": "GELATI",  # Eccezione: se contiene GELATO è il prodotto
-    "TOVAGLIOLO": "NO FOOD",
-    "TOVAGLIOLI": "NO FOOD",
-    "TOVAGLIOLIN": "NO FOOD",
-    "PIATTI": "NO FOOD",
-    "PIATTO": "NO FOOD",
-    "PIATTINO": "NO FOOD",
-    "BICCHIERI": "NO FOOD",
-    "BICCHIERE": "NO FOOD",
-    "BICCHIERINO": "NO FOOD",
-    "CALICE": "NO FOOD",
-    "POSATE": "NO FOOD",
-    "FORCHETTA": "NO FOOD",
-    "FORCHETTE": "NO FOOD",
-    "CUCCHIAIO": "NO FOOD",
-    "CUCCHIAI": "NO FOOD",
-    "CUCCHIAINO": "NO FOOD",
-    "COLTELLO PLASTICA": "NO FOOD",
-    "POSATE LEGNO": "NO FOOD",
-    "POSATE PLASTICA": "NO FOOD",
-    "CANNUCCIA": "NO FOOD",
-    "SAC A POCHE": "NO FOOD",
-    "CARTA": "NO FOOD",
-    "CARTA FORNO": "NO FOOD",
-    "CARTA ASSORBENTE": "NO FOOD",
-    "ROTOLO": "NO FOOD",
-    "ROTOLI CUCINA": "NO FOOD",
-    "SCOTTEX": "NO FOOD",
-    "SACCHETTI": "NO FOOD",
-    "SACCHETTO": "NO FOOD",
-    "SHOPPER": "NO FOOD",
-    "BUSTE": "NO FOOD",
-    "BUSTA": "NO FOOD",
-    "CONTENITORI": "NO FOOD",
-    "CONTENITORE": "NO FOOD",
-    "ASPORTO": "NO FOOD",
-    "TAKE AWAY": "NO FOOD",
-    "COPERCHIO": "NO FOOD",
-    "COPERCHI": "NO FOOD",
-    "PELLICOLA": "NO FOOD",
-    "FILM": "NO FOOD",
-    "ALLUMINIO": "NO FOOD",
-    "STAGNOLA": "NO FOOD",
-    "DETERGENTE": "NO FOOD",
-    "DETERSIVO": "NO FOOD",
-    "SGRASSATORE": "NO FOOD",
-    "SAPONE": "NO FOOD",
-    "DISINFETTANTE": "NO FOOD",
-    "IGIENIZZANTE": "NO FOOD",
-    "GEL MANI": "NO FOOD",
-    "GUANTI": "NO FOOD",
-    "GUANTO": "NO FOOD",
-    "SPUGNA": "NO FOOD",
-    "SPUGNE": "NO FOOD",
-    "STROFINACCIO": "NO FOOD",
-    "STROFINACCI": "NO FOOD",
-    "PANNO": "NO FOOD",
-    "PANNI": "NO FOOD",
-    "STRACCIO": "NO FOOD",
-    "SCOPA": "NO FOOD",
-    "MOCIO": "NO FOOD",
-    "SPAZZOLONE": "NO FOOD",
-    "TOVAGLIA": "NO FOOD",
-    "TOVAGLIE": "NO FOOD",
-    "TAZZA": "NO FOOD",
-    "TAZZINA": "NO FOOD",
-    "POMPETTA": "NO FOOD",
-    "DOSATORE": "NO FOOD",
-    "TAPPO": "NO FOOD",
-    "TAPPI": "NO FOOD",
-    "SCOTCH": "NO FOOD",
-    "NASTRO ADESIVO": "NO FOOD",
-    "ETICHETTE": "NO FOOD",
-    "ETICHETTA": "NO FOOD",
-    "ETICHETTE ADESIVE": "NO FOOD",
-    "SPAGO": "NO FOOD",
-    "ELASTICI": "NO FOOD",
-    "ELASTICO": "NO FOOD",
-    "PENNARELLO": "NO FOOD",
-    "PENNARELLI": "NO FOOD",
-    "MARKER": "NO FOOD",
-    "PACKAGING": "NO FOOD",
-    "TAZZE": "NO FOOD",
-    "PIATTINI": "NO FOOD",
-    "COPERTI": "NO FOOD",
-    "STOVIGLIE": "NO FOOD",
+    # ===== MATERIALI CONSUMO -> MATERIALE DI CONSUMO =====
+    "BUSTINE": "MATERIALE DI CONSUMO",
+    "PALETTE": "MATERIALE DI CONSUMO",
+    "CANNUCCE": "MATERIALE DI CONSUMO",
+    "TOVAGLIETTE": "MATERIALE DI CONSUMO",
+    "VASCHETTA": "MATERIALE DI CONSUMO",
+    "VASCHETTE": "MATERIALE DI CONSUMO",
+    "VASCHETTINA": "MATERIALE DI CONSUMO",
+    "COPPETTA": "MATERIALE DI CONSUMO",
+    "COPPETTE": "MATERIALE DI CONSUMO",
+    "COPPA GELATO": "GELATI",  # Eccezione: se contiene GELATO Ã¨ il prodotto
+    "TOVAGLIOLO": "MATERIALE DI CONSUMO",
+    "TOVAGLIOLI": "MATERIALE DI CONSUMO",
+    "TOVAGLIOLIN": "MATERIALE DI CONSUMO",
+    "PIATTI": "MATERIALE DI CONSUMO",
+    "PIATTO": "MATERIALE DI CONSUMO",
+    "PIATTINO": "MATERIALE DI CONSUMO",
+    "BICCHIERI": "MATERIALE DI CONSUMO",
+    "BICCHIERE": "MATERIALE DI CONSUMO",
+    "BICCHIERINO": "MATERIALE DI CONSUMO",
+    "CALICE": "MATERIALE DI CONSUMO",
+    "POSATE": "MATERIALE DI CONSUMO",
+    "FORCHETTA": "MATERIALE DI CONSUMO",
+    "FORCHETTE": "MATERIALE DI CONSUMO",
+    "CUCCHIAIO": "MATERIALE DI CONSUMO",
+    "CUCCHIAI": "MATERIALE DI CONSUMO",
+    "CUCCHIAINO": "MATERIALE DI CONSUMO",
+    "COLTELLO PLASTICA": "MATERIALE DI CONSUMO",
+    "POSATE LEGNO": "MATERIALE DI CONSUMO",
+    "POSATE PLASTICA": "MATERIALE DI CONSUMO",
+    "CANNUCCIA": "MATERIALE DI CONSUMO",
+    "SAC A POCHE": "MATERIALE DI CONSUMO",
+    "CARTA": "MATERIALE DI CONSUMO",
+    "CARTA FORNO": "MATERIALE DI CONSUMO",
+    "CARTA ASSORBENTE": "MATERIALE DI CONSUMO",
+    "ROTOLO": "MATERIALE DI CONSUMO",
+    "ROTOLI CUCINA": "MATERIALE DI CONSUMO",
+    "SCOTTEX": "MATERIALE DI CONSUMO",
+    "SACCHETTI": "MATERIALE DI CONSUMO",
+    "SACCHETTO": "MATERIALE DI CONSUMO",
+    "SHOPPER": "MATERIALE DI CONSUMO",
+    "BUSTE": "MATERIALE DI CONSUMO",
+    "BUSTA": "MATERIALE DI CONSUMO",
+    "CONTENITORI": "MATERIALE DI CONSUMO",
+    "CONTENITORE": "MATERIALE DI CONSUMO",
+    "ASPORTO": "MATERIALE DI CONSUMO",
+    "TAKE AWAY": "MATERIALE DI CONSUMO",
+    "COPERCHIO": "MATERIALE DI CONSUMO",
+    "COPERCHI": "MATERIALE DI CONSUMO",
+    "PELLICOLA": "MATERIALE DI CONSUMO",
+    "FILM": "MATERIALE DI CONSUMO",
+    "ALLUMINIO": "MATERIALE DI CONSUMO",
+    "STAGNOLA": "MATERIALE DI CONSUMO",
+    "DETERGENTE": "MATERIALE DI CONSUMO",
+    "DETERSIVO": "MATERIALE DI CONSUMO",
+    "SGRASSATORE": "MATERIALE DI CONSUMO",
+    "SAPONE": "MATERIALE DI CONSUMO",
+    "DISINFETTANTE": "MATERIALE DI CONSUMO",
+    "IGIENIZZANTE": "MATERIALE DI CONSUMO",
+    "GEL MANI": "MATERIALE DI CONSUMO",
+    "GUANTI": "MATERIALE DI CONSUMO",
+    "GUANTO": "MATERIALE DI CONSUMO",
+    "SPUGNA": "MATERIALE DI CONSUMO",
+    "SPUGNE": "MATERIALE DI CONSUMO",
+    "STROFINACCIO": "MATERIALE DI CONSUMO",
+    "STROFINACCI": "MATERIALE DI CONSUMO",
+    "PANNO": "MATERIALE DI CONSUMO",
+    "PANNI": "MATERIALE DI CONSUMO",
+    "STRACCIO": "MATERIALE DI CONSUMO",
+    "SCOPA": "MATERIALE DI CONSUMO",
+    "MOCIO": "MATERIALE DI CONSUMO",
+    "SPAZZOLONE": "MATERIALE DI CONSUMO",
+    "TOVAGLIA": "MATERIALE DI CONSUMO",
+    "TOVAGLIE": "MATERIALE DI CONSUMO",
+    "TAZZA": "MATERIALE DI CONSUMO",
+    "TAZZINA": "MATERIALE DI CONSUMO",
+    "POMPETTA": "MATERIALE DI CONSUMO",
+    "DOSATORE": "MATERIALE DI CONSUMO",
+    "TAPPO": "MATERIALE DI CONSUMO",
+    "TAPPI": "MATERIALE DI CONSUMO",
+    "SCOTCH": "MATERIALE DI CONSUMO",
+    "NASTRO ADESIVO": "MATERIALE DI CONSUMO",
+    "ETICHETTE": "MATERIALE DI CONSUMO",
+    "ETICHETTA": "MATERIALE DI CONSUMO",
+    "ETICHETTE ADESIVE": "MATERIALE DI CONSUMO",
+    "SPAGO": "MATERIALE DI CONSUMO",
+    "ELASTICI": "MATERIALE DI CONSUMO",
+    "ELASTICO": "MATERIALE DI CONSUMO",
+    "PENNARELLO": "MATERIALE DI CONSUMO",
+    "PENNARELLI": "MATERIALE DI CONSUMO",
+    "MARKER": "MATERIALE DI CONSUMO",
+    "PACKAGING": "MATERIALE DI CONSUMO",
+    "TAZZE": "MATERIALE DI CONSUMO",
+    "PIATTINI": "MATERIALE DI CONSUMO",
+    "COPERTI": "MATERIALE DI CONSUMO",
+    "STOVIGLIE": "MATERIALE DI CONSUMO",
     
     # ===== SERVIZI E CONSULENZE =====
     "GOOGLE WORKSPACE": "SERVIZI E CONSULENZE",
@@ -693,12 +695,12 @@ DIZIONARIO_CORREZIONI = {
     "RICAMO": "SERVIZI E CONSULENZE",
     "CONSULENZA": "SERVIZI E CONSULENZE",
     "COMMERCIALISTA": "SERVIZI E CONSULENZE",
-    "CONTABILITÀ": "SERVIZI E CONSULENZE",
+    "CONTABILITÃ€": "SERVIZI E CONSULENZE",
     "CONTABILE": "SERVIZI E CONSULENZE",
     "CONSULENTE FISCALE": "SERVIZI E CONSULENZE",
     "FISCALE": "SERVIZI E CONSULENZE",
     "FATTURAZIONE ELETTRONICA": "SERVIZI E CONSULENZE",
-    "PUBBLICITÀ": "SERVIZI E CONSULENZE",
+    "PUBBLICITÃ€": "SERVIZI E CONSULENZE",
     "MARKETING": "SERVIZI E CONSULENZE",
     "SOCIAL MEDIA": "SERVIZI E CONSULENZE",
     "PUBBLICITA": "SERVIZI E CONSULENZE",
@@ -726,7 +728,7 @@ DIZIONARIO_CORREZIONI = {
     
     # ===== PENALI E INTERESSI =====
     "INDENNITA": "SERVIZI E CONSULENZE",
-    "INDENNITÀ": "SERVIZI E CONSULENZE",
+    "INDENNITÃ€": "SERVIZI E CONSULENZE",
     "MORA": "SERVIZI E CONSULENZE",
     "RITARDATO PAGAMENTO": "SERVIZI E CONSULENZE",
     "INTERESSI": "SERVIZI E CONSULENZE",
@@ -743,7 +745,7 @@ DIZIONARIO_CORREZIONI = {
     "SPESA PER LA VENDITA": "UTENZE E LOCALI",
     "SPESA PER LA TARIFFA": "UTENZE E LOCALI",
     "LUCE": "UTENZE E LOCALI",
-    "ELETTRICITÀ": "UTENZE E LOCALI",
+    "ELETTRICITÃ€": "UTENZE E LOCALI",
     "GAS": "UTENZE E LOCALI",
     "METANO": "UTENZE E LOCALI",
     "GPL": "UTENZE E LOCALI",
@@ -807,7 +809,7 @@ DIZIONARIO_CORREZIONI = {
     "TAVOLO": "MANUTENZIONE E ATTREZZATURE",
     "SEDIA": "MANUTENZIONE E ATTREZZATURE",
     "ATTREZZATURA": "MANUTENZIONE E ATTREZZATURE",
-    "MACCHINA CAFFÈ": "MANUTENZIONE E ATTREZZATURE",
+    "MACCHINA CAFFÃˆ": "MANUTENZIONE E ATTREZZATURE",
     "MACINADOSATORE": "MANUTENZIONE E ATTREZZATURE",
     "MIXER": "MANUTENZIONE E ATTREZZATURE",
     "ROBOT": "MANUTENZIONE E ATTREZZATURE",
@@ -822,13 +824,13 @@ DIZIONARIO_CORREZIONI = {
     
     # ===== FIX DIZIONARIO CONSERVATIVO - KEYWORD SPECIFICHE =====
     "BISCOTTINI": "PASTICCERIA",
-    "CANDEGGINA": "NO FOOD",
+    "CANDEGGINA": "MATERIALE DI CONSUMO",
     "CROSTATE": "PASTICCERIA",
     "CROSTATINE": "PASTICCERIA",
     "DOLCI NATALIZI": "PASTICCERIA",
     "FACCINE": "PASTICCERIA",
     "MIX NATALE": "PASTICCERIA",
-    "MOUSSE MANI": "NO FOOD",
+    "MOUSSE MANI": "MATERIALE DI CONSUMO",
     "PASSATA POMOD": "SCATOLAME E CONSERVE",
     "PASSATA POMODORO": "SCATOLAME E CONSERVE",
     "SALAME CIOCCOLATO": "PASTICCERIA",
@@ -841,7 +843,7 @@ DIZIONARIO_CORREZIONI = {
     "BEVANDA SOJA": "BEVANDE",
     "BOLLO SPESA": "SERVIZI E CONSULENZE",
     "BRIE": "LATTICINI",
-    "BRILL": "NO FOOD",
+    "BRILL": "MATERIALE DI CONSUMO",
     "CANES": "PASTICCERIA",
     "CANESTRELLI": "PASTICCERIA",
     "CANESTRELLO": "PASTICCERIA",
@@ -850,7 +852,7 @@ DIZIONARIO_CORREZIONI = {
     "CANNONCINO": "PASTICCERIA",
     "CANNOLI SFOGLIA": "PASTICCERIA",
     "CONCHIGLIA PANNA": "PASTICCERIA",
-    # "ARAGOSTINE": duplicato rimosso (già definito sopra)
+    # "ARAGOSTINE": duplicato rimosso (giÃ  definito sopra)
     "CAPRA": "LATTICINI",
     "CAPRINO": "LATTICINI",
     "CAPRINO VACCINO": "LATTICINI",
@@ -867,18 +869,18 @@ DIZIONARIO_CORREZIONI = {
     "GENOVESI": "PASTICCERIA",
     "GIANDUIA": "PASTICCERIA",
     "GIANDUJA": "PASTICCERIA",
-    "LAVASTOV": "NO FOOD",
-    "MISTER X": "NO FOOD",
-    "TAZZA": "NO FOOD",
-    "GREMBIULE": "NO FOOD",
-    "SALE PASTIGLIE": "NO FOOD",
+    "LAVASTOV": "MATERIALE DI CONSUMO",
+    "MISTER X": "MATERIALE DI CONSUMO",
+    "TAZZA": "MATERIALE DI CONSUMO",
+    "GREMBIULE": "MATERIALE DI CONSUMO",
+    "SALE PASTIGLIE": "MATERIALE DI CONSUMO",
     "MISTO FROLLA": "PASTICCERIA",
     "NOCE BOV": "CARNE",
     "NOCE BOVINO": "CARNE",
     "OCCHI BUE": "PASTICCERIA",
     "OCCHI DI BUE": "PASTICCERIA",
     "PARMA": "SALUMI",
-    # ✅ PASSATA → SCATOLAME E CONSERVE (unificato, rimossi duplicati da righe 819-821)
+    # âœ… PASSATA â†’ SCATOLAME E CONSERVE (unificato, rimossi duplicati da righe 819-821)
     "PASSATA": "SCATOLAME E CONSERVE",
     # "PASSATA POMOD": duplicato rimosso (definito sopra come SALSE E CREME, ora unificato)
     # "PASSATA POMODORO": duplicato rimosso (definito sopra come SALSE E CREME, ora unificato)
@@ -893,9 +895,9 @@ DIZIONARIO_CORREZIONI = {
     "CONSUNTIVO": "SERVIZI E CONSULENZE",
     "PIADINA": "PRODOTTI DA FORNO",
     "PIADINE": "PRODOTTI DA FORNO",
-    "PREGISAN": "NO FOOD",
+    "PREGISAN": "MATERIALE DI CONSUMO",
     "PREMI": "SERVIZI E CONSULENZE",
-    "RIF SAN PREGISAN": "NO FOOD",
+    "RIF SAN PREGISAN": "MATERIALE DI CONSUMO",
     "SAVOIARDI": "PASTICCERIA",
     "SAVOIARDO": "PASTICCERIA",
     "SICILIANI CANNOLO": "PASTICCERIA",

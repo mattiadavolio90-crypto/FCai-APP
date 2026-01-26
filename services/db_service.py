@@ -250,7 +250,7 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     (con sconti applicati) tra acquisti successivi dello stesso prodotto.
     
     IMPORTANTE: Escludi SOLO le 3 categorie spese generali reali.
-    NO FOOD È F&B! (tovaglioli, piatti usa e getta, pellicole = materiali consumo ristorante)
+    MATERIALE DI CONSUMO È F&B! (tovaglioli, piatti usa e getta, pellicole = materiali consumo ristorante)
     
     Logica:
     - Confronta Prezzo Unit. Effettivo (€/PZ, €/Kg, etc.)
@@ -281,7 +281,7 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     # 2. UTENZE E LOCALI
     # 3. SERVIZI E CONSULENZE
     #
-    # TUTTO IL RESTO È F&B (incluso NO FOOD!)
+    # TUTTO IL RESTO È F&B (incluso MATERIALE DI CONSUMO!)
     df_fb = df[~df['Categoria'].isin(CATEGORIE_SPESE_GENERALI)].copy()
     
     if df_fb.empty:
@@ -427,8 +427,8 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
         # 2. UTENZE E LOCALI
         # 3. SERVIZI E CONSULENZE
         #
-        # TUTTO IL RESTO È F&B (incluso NO FOOD!)
-        # NO FOOD contiene materiali di consumo ristorante (tovaglioli, piatti, pellicole, etc.)
+        # TUTTO IL RESTO È F&B (incluso MATERIALE DI CONSUMO!)
+        # MATERIALE DI CONSUMO contiene materiali di consumo ristorante (tovaglioli, piatti, pellicole, etc.)
         df_food = df[~df['categoria'].isin(CATEGORIE_SPESE_GENERALI)].copy()
         
         # Logging conteggi per verifica filtro

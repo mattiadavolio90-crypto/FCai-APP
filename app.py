@@ -50,8 +50,6 @@ from config.constants import (
     TUTTE_LE_CATEGORIE,
     CATEGORIE_FOOD,
     CATEGORIE_SPESE_GENERALI,
-    # Fornitori NO FOOD (unificati)
-    FORNITORI_NO_FOOD_KEYWORDS,
     # Dizionario correzioni
     DIZIONARIO_CORREZIONI
 )
@@ -2292,26 +2290,27 @@ def mostra_statistiche(df_completo):
             )
         
         # ✅ FILTRO DINAMICO IN BASE ALLA SELEZIONE - USA DATI FILTRATI PER PERIODO
+        # NOTA: Filtriamo SOLO per categoria, NON per fornitore!
+        # - MATERIALE DI CONSUMO (ex NO FOOD) è F&B (pellicole, guanti, detersivi)
+        # - SPESE GENERALI sono solo 3 categorie: UTENZE, SERVIZI, MANUTENZIONE
         if tipo_filtro == "Food & Beverage":
-            # Solo F&B + NO FOOD, escludi spese generali
+            # F&B + MATERIALE DI CONSUMO = tutto tranne Spese Generali
             df_base = df_completo_filtrato[
-                (~df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)) &
-                (~df_completo_filtrato['Fornitore'].str.upper().str.contains('|'.join(FORNITORI_NO_FOOD_KEYWORDS), na=False))
+                ~df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)
             ].copy()
         elif tipo_filtro == "Spese Generali":
-            # Solo spese generali
+            # Solo le 3 categorie spese generali
             df_base = df_completo_filtrato[
                 df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)
             ].copy()
         else:  # "Tutti"
-            # Tutti i prodotti, escludi solo fornitori non-food
-            df_base = df_completo_filtrato[
-                ~df_completo_filtrato['Fornitore'].str.upper().str.contains('|'.join(FORNITORI_NO_FOOD_KEYWORDS), na=False)
-            ].copy()
+            # Tutti i prodotti senza filtri
+            df_base = df_completo_filtrato.copy()
         
-        # Applica struttura colonne nell'ordine corretto
-        cols_base = ['FileOrigine', 'DataDocumento', 'Fornitore', 'Descrizione',
-                    'Quantita', 'UnitaMisura', 'PrezzoUnitario', 'IVAPercentuale', 'TotaleRiga', 'Categoria']
+        # Applica struttura colonne nell'ordine corretto (allineato con vista aggregata)
+        # Ordine: File, NumeroRiga, Data, Descrizione, Categoria, Fornitore, Quantita, Totale, Prezzo, UM, IVA
+        cols_base = ['FileOrigine', 'NumeroRiga', 'DataDocumento', 'Descrizione', 'Categoria', 
+                    'Fornitore', 'Quantita', 'TotaleRiga', 'PrezzoUnitario', 'UnitaMisura', 'IVAPercentuale']
         
         # Aggiungi prezzo_standard se esiste nel database
         if 'PrezzoStandard' in df_base.columns:
@@ -2376,10 +2375,10 @@ def mostra_statistiche(df_completo):
         
         # 🧠 AGGIUNGI ICONA AI alle righe appena categorizzate (solo sessione corrente)
         # TEMPORANEO: Icone AI 🧠 disabilitate - causavano mismatch dropdown
-        # PROBLEMA: Aggiungere emoji trasforma "NO FOOD" in "NO FOOD 🧠"
-        # Il dropdown ha opzioni ["NO FOOD", "PESCE", ...] senza emoji
+        # PROBLEMA: Aggiungere emoji trasforma "MATERIALE DI CONSUMO" in "MATERIALE DI CONSUMO 🧠"
+        # Il dropdown ha opzioni ["MATERIALE DI CONSUMO", "PESCE", ...] senza emoji
         # Streamlit bug: se valore non è nelle options → cella bianca/vuota
-        # LOG EVIDENZA: "⚠️ Categoria 'NO FOOD 🧠' non nelle opzioni! → 'Da Classificare'"
+        # LOG EVIDENZA: "⚠️ Categoria 'MATERIALE DI CONSUMO 🧠' non nelle opzioni! → 'Da Classificare'"
         # RISULTATO: 26/26 celle bianche dopo categorizzazione AI
         #
         # # ORA che le celle vuote sono state convertite in "Da Classificare", possiamo aggiungere l'icona
@@ -2480,20 +2479,22 @@ def mostra_statistiche(df_completo):
             if 'FileOrigine' in df_editor_agg.columns:
                 df_editor_agg.rename(columns={'FileOrigine': 'NumFatture'}, inplace=True)
             
-            # Riordina colonne: NumFatture, NumRighe, DataDocumento in posizione 1, 2, 3
-            cols = df_editor_agg.columns.tolist()
-            # Rimuovi le 3 colonne da riposizionare
-            cols_reordered = [c for c in cols if c not in ['NumFatture', 'NumRighe', 'DataDocumento']]
-            # Aggiungi le 3 colonne all'inizio nell'ordine: N.Fatt, N.Righe, Data
-            cols_to_prepend = []
-            if 'NumFatture' in cols:
-                cols_to_prepend.append('NumFatture')
-            if 'NumRighe' in cols:
-                cols_to_prepend.append('NumRighe')
-            if 'DataDocumento' in cols:
-                cols_to_prepend.append('DataDocumento')
-            cols_reordered = cols_to_prepend + cols_reordered
-            df_editor_agg = df_editor_agg[cols_reordered]
+            # Riordina colonne per allinearle con vista normale
+            # Ordine: NumFatture, NumRighe, Data, Descrizione, Categoria, Fornitore, Quantita, Totale, Prezzo, UM, IVA, Fonte
+            cols_order = ['NumFatture', 'NumRighe', 'DataDocumento', 'Descrizione', 'Categoria', 
+                         'Fornitore', 'Quantita', 'TotaleRiga', 'PrezzoUnitario', 'UnitaMisura', 'IVAPercentuale']
+            
+            # Aggiungi Fonte se presente
+            if 'Fonte' in df_editor_agg.columns:
+                cols_order.append('Fonte')
+            
+            # Aggiungi PrezzoStandard se presente
+            if 'PrezzoStandard' in df_editor_agg.columns:
+                cols_order.append('PrezzoStandard')
+            
+            # Mantieni solo le colonne effettivamente presenti nel dataframe
+            cols_final = [c for c in cols_order if c in df_editor_agg.columns]
+            df_editor_agg = df_editor_agg[cols_final]
             
             # Usa vista aggregata
             df_editor_paginato = df_editor_agg
@@ -2600,9 +2601,12 @@ def mostra_statistiche(df_completo):
         elif 'LISTINO' in df_editor_paginato.columns:
             df_editor_paginato = df_editor_paginato.drop(columns=['LISTINO'])
 
-        # Configurazione colonne
+        # Configurazione colonne (ordine allineato tra vista normale e aggregata)
         column_config_dict = {
+            "FileOrigine": st.column_config.TextColumn("File", disabled=True),
+            "NumeroRiga": st.column_config.NumberColumn("N.Riga", disabled=True, width="small"),
             "DataDocumento": st.column_config.TextColumn("Data", disabled=True),
+            "Descrizione": st.column_config.TextColumn("Descrizione", disabled=True),
             "Categoria": st.column_config.SelectboxColumn(
                 "Categoria",
                 help="Seleziona la categoria corretta (le celle 'Da Classificare' devono essere categorizzate)",
@@ -2610,20 +2614,18 @@ def mostra_statistiche(df_completo):
                 options=categorie_disponibili,
                 required=True
             ),
-            # ⭐ NUOVO: Colonna Fonte (dopo Categoria)
+            "Fornitore": st.column_config.TextColumn("Fornitore", disabled=True),
+            "Quantita": st.column_config.NumberColumn("Q.tà", disabled=True),
+            "TotaleRiga": st.column_config.NumberColumn("Totale (€)", format="€ %.2f", disabled=True),
+            "PrezzoUnitario": st.column_config.NumberColumn("Prezzo Unit.", format="€ %.2f", disabled=True),
+            "UnitaMisura": st.column_config.TextColumn("U.M.", disabled=True, width="small"),
+            # ⭐ NUOVO: Colonna Fonte (dopo IVA)
             "Fonte": st.column_config.TextColumn(
                 "Fonte",
                 help="📚=dizionario | 🤖=AI batch | ✋=modifica manuale | (vuoto)=storica",
                 disabled=True,
                 width="small"
-            ),
-            "TotaleRiga": st.column_config.NumberColumn("Totale (€)", format="€ %.2f", disabled=True),
-            "PrezzoUnitario": st.column_config.NumberColumn("Prezzo Unit.", format="€ %.2f", disabled=True),
-            "Descrizione": st.column_config.TextColumn("Descrizione", disabled=True),
-            "Fornitore": st.column_config.TextColumn("Fornitore", disabled=True),
-            "FileOrigine": st.column_config.TextColumn("File", disabled=True),
-            "Quantita": st.column_config.NumberColumn("Q.tà", disabled=True),
-            "UnitaMisura": st.column_config.TextColumn("U.M.", disabled=True, width="small")
+            )
         }
         
         # ============================================================
@@ -4224,13 +4226,14 @@ if not df_cache.empty:
                     'File': row['File'],
                     'Fornitore': row['Fornitore'],
                     'NumProdotti': int(row['NumProdotti']),
-                    'Totale': row['Totale']
+                    'Totale': row['Totale'],
+                    'Data': row['Data']
                 })
             
             fattura_selezionata = st.selectbox(
                 "Seleziona fattura da eliminare:",
                 options=fatture_options,
-                format_func=lambda x: f"📄 {x['File']} - {x['Fornitore']} (📦 {x['NumProdotti']} prodotti, 💰 €{x['Totale']:.2f})",
+                format_func=lambda x: f"📄 {x['File']} - {x['Fornitore']} (📅 {x['Data']}, 📦 {x['NumProdotti']} prodotti, 💰 €{x['Totale']:.2f})",
                 key="select_fattura_elimina"
             )
             

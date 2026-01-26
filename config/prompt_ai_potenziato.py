@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Prompt AI Potenziato con Esempi Pratici
@@ -46,7 +46,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 11. **LATTICINI** - Formaggi, burro, panna, yogurt, latte
     Esempi: "PARMIGIANO REGGIANO KG2", "MOZZARELLA DI BUFALA", "BURRO", "PANNA", "YOGURT"
 
-12. **NO FOOD** - Materiali non edibili: pellicole, carta, detersivi, bicchieri, posate, tovaglioli, coperchi
+12. **MATERIALE DI CONSUMO** - Materiali non edibili: pellicole, carta, detersivi, bicchieri, posate, tovaglioli, coperchi
     Esempi: "TOVAGLIOLI", "PELLICOLA FILM", "DETERSIVO STOVIGLIE", "BICCHIERI PLASTICA"
 
 13. **OLIO E CONDIMENTI** - Olii, aceti, condimenti
@@ -95,7 +95,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 📦 CATEGORIE MATERIALI (1 categoria consolidata)
 ═══════════════════════════════════════════════════════════════════
 
-27. **NO FOOD** - Tutti i materiali non edibili:
+27. **MATERIALE DI CONSUMO** - Tutti i materiali non edibili:
     - STOVIGLIE: tazze, piatti, bicchieri, posate, forchette, coltelli
     - MONOUSO: tovaglioli, cannucce, palette, bustine, vaschette, coperchi, pellicole
     - PULIZIA: detersivi, candeggina, sapone, spugne, panni, scope
@@ -121,7 +121,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
    - Parole chiave: servizio, mora, indennità, interessi, penale, gestione, amministrativa, fatturazione, contributo
    - ⚠️ NON usare MAI "NOTE E DICITURE" - categoria riservata solo per admin!
 
-2. **MATERIALI PRIMA**: Se contiene parole chiave materiali/non-edibili → "NO FOOD"
+2. **MATERIALI PRIMA**: Se contiene parole chiave materiali/non-edibili → "MATERIALE DI CONSUMO"
    - Parole chiave: pellicola, carta, towel, tovagliolo, bicchiere, piatto, detersivo, posate, cannuccia
 
 3. **BEVANDE SPECIFICHE**: Se contiene alcol specifico → categoria alcol
@@ -150,11 +150,11 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 ❌ NON mettere CANNONCINI BURRO in LATTICINI - sono PASTICCERIA
 ❌ NON mettere SALAME DI CIOCCOLATO in SALUMI - è PASTICCERIA
 ❌ NON mettere PASSATA POMODORO in FRUTTA - è SALSE E CREME
-❌ NON mettere TAZZE/BICCHIERI in VARIE BAR - sono NO FOOD
-❌ NON mettere CORNETTI in NO FOOD - sono PASTICCERIA!
-❌ NON mettere BRIOCHES in NO FOOD - sono PASTICCERIA!
+❌ NON mettere TAZZE/BICCHIERI in VARIE BAR - sono MATERIALE DI CONSUMO
+❌ NON mettere CORNETTI in MATERIALE DI CONSUMO - sono PASTICCERIA!
+❌ NON mettere BRIOCHES in MATERIALE DI CONSUMO - sono PASTICCERIA!
 ✅ CORNETTI/CROISSANT/BRIOCHES/CROSTATINE sempre → PASTICCERIA
-✅ TAZZE/BICCHIERI/PIATTI/SALVIETTE sempre → NO FOOD
+✅ TAZZE/BICCHIERI/PIATTI/SALVIETTE sempre → MATERIALE DI CONSUMO
 ✅ DOLCI/BISCOTTI/CANNOLI sempre → PASTICCERIA
 ✅ BEVANDE ALCOLICHE SPECIFICHE → categoria alcol
 
@@ -165,8 +165,8 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 🚨 IMPORTANTE: NON restituire MAI "Da Classificare" o stringhe vuote!
    DEVI sempre classificare con la categoria più probabile.
    
-   ⚠️ ATTENZIONE: CORNETTI, BRIOCHES, CROISSANT, CROSTATINE sono SEMPRE PASTICCERIA, mai NO FOOD!
-   ⚠️ SOLO pellicole, piatti, bicchieri, salviette, tovaglioli, coperchi → NO FOOD
+   ⚠️ ATTENZIONE: CORNETTI, BRIOCHES, CROISSANT, CROSTATINE sono SEMPRE PASTICCERIA, mai MATERIALE DI CONSUMO!
+   ⚠️ SOLO pellicole, piatti, bicchieri, salviette, tovaglioli, coperchi → MATERIALE DI CONSUMO
    
    Se incerto tra food/no-food, leggi attentamente: è commestibile? → categoria food appropriata
 
@@ -176,7 +176,7 @@ Rispondi SOLO in JSON:
 }
 
 Mantieni lo STESSO ordine degli articoli forniti.
-Usa esattamente i nomi categoria sopra (26 food + NO FOOD + 3 spese = 30 categorie).
+Usa esattamente i nomi categoria sopra (26 food + MATERIALE DI CONSUMO + 3 spese = 30 categorie).
 
 ═══════════════════════════════════════════════════════════════════
 🎯 ARTICOLI DA CLASSIFICARE

@@ -426,8 +426,8 @@ def carica_categorie_da_db(supabase_client=None) -> list:
         CATEGORIE_SPESE_OPERATIVE
     )
     
-    # Combina tutte le categorie F&B (Food+Beverage + NO FOOD)
-    categorie_fb = CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI  # Include NO FOOD
+    # Combina tutte le categorie F&B (Food+Beverage + MATERIALE DI CONSUMO)
+    categorie_fb = CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI  # Include MATERIALE DI CONSUMO
     
     # Ordina alfabeticamente entrambe le liste
     categorie_fb_sorted = sorted(categorie_fb)
@@ -447,7 +447,7 @@ def _get_categorie_fallback() -> list:
     Ordine:
     1. NOTE E DICITURE (prima - per righe €0)
     2. Spese generali (MANUTENZIONE, SERVIZI, UTENZE)
-    3. F&B alfabetico (incluso NO FOOD)
+    3. F&B alfabetico (incluso MATERIALE DI CONSUMO)
     
     Returns:
         list: Lista 28 categorie ordinate
@@ -469,7 +469,7 @@ def _get_categorie_fallback() -> list:
     ]
     
     # ============================================================
-    # 3. CATEGORIE F&B (ordine alfabetico, include NO FOOD)
+    # 3. CATEGORIE F&B (ordine alfabetico, include MATERIALE DI CONSUMO)
     # ============================================================
     categorie_prodotti = [
         "ACQUA",
@@ -483,7 +483,7 @@ def _get_categorie_fallback() -> list:
         "FRUTTA",
         "GELATI",
         "LATTICINI",
-        "NO FOOD",  # Materiali cucina (pellicole, rotoloni) - parte di F&B
+        "MATERIALE DI CONSUMO",  # Materiali cucina (pellicole, rotoloni) - parte di F&B
         "OLIO E CONDIMENTI",
         "PASTICCERIA",
         "PESCE",

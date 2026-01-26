@@ -1,4 +1,4 @@
-"""
+﻿"""
 AI Service - Classificazione Intelligente e Gestione Memoria Prodotti
 
 Gestisce:
@@ -257,7 +257,7 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     
     STRATEGIA: I CIBI hanno priorità sui CONTENITORI.
     - Se trova un ALIMENTO (SALSICCIA, CAROTE, etc.), lo classifica per quello
-    - Se trova SOLO un CONTENITORE (VASC, CONF, BUSTA, etc.), classifica NO FOOD
+    - Se trova SOLO un CONTENITORE (VASC, CONF, BUSTA, etc.), classifica MATERIALE DI CONSUMO
     - Ignora i contenitori se c'è un alimento presente
     
     Ordina keyword per lunghezza decrescente dentro ogni categoria di priorità.
@@ -275,21 +275,21 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     desc_upper = descrizione.upper()
     
     # 🔥 KEYWORDS CONTENITORI/PACKAGING (BASSA PRIORITÀ)
-    # Se non c'è nessun alimento, questi matchano e danno NO FOOD
+    # Se non c'è nessun alimento, questi matchano e danno MATERIALE DI CONSUMO
     keywords_contenitori = {
-        "VASCHETTA": "NO FOOD",
-        "VASCHETTE": "NO FOOD",
-        "VASCHETTINA": "NO FOOD",
-        "VASC": "NO FOOD",
-        "CONFEZIONE": "NO FOOD",
-        "CONF": "NO FOOD",
-        "BUSTA": "NO FOOD",
-        "SCATOLA": "NO FOOD",
-        "CARTONE": "NO FOOD",
-        "PACCO": "NO FOOD",
-        "BARATTOLO": "NO FOOD",
-        "BOTTIGLIA": "NO FOOD",
-        "LATTINA": "NO FOOD",
+        "VASCHETTA": "MATERIALE DI CONSUMO",
+        "VASCHETTE": "MATERIALE DI CONSUMO",
+        "VASCHETTINA": "MATERIALE DI CONSUMO",
+        "VASC": "MATERIALE DI CONSUMO",
+        "CONFEZIONE": "MATERIALE DI CONSUMO",
+        "CONF": "MATERIALE DI CONSUMO",
+        "BUSTA": "MATERIALE DI CONSUMO",
+        "SCATOLA": "MATERIALE DI CONSUMO",
+        "CARTONE": "MATERIALE DI CONSUMO",
+        "PACCO": "MATERIALE DI CONSUMO",
+        "BARATTOLO": "MATERIALE DI CONSUMO",
+        "BOTTIGLIA": "MATERIALE DI CONSUMO",
+        "LATTINA": "MATERIALE DI CONSUMO",
     }
     
     # 🍽️ TUTTI GLI ALTRI KEYWORDS (ALTA PRIORITÀ = ALIMENTI)
@@ -630,7 +630,7 @@ def classifica_con_ai(
         # Dizionario applicato SOLO se descrizione non in memoria
         return [
             risultati[d] if d in risultati 
-            else applica_correzioni_dizionario(d, "NO FOOD")
+            else applica_correzioni_dizionario(d, "MATERIALE DI CONSUMO")
             for d in lista_descrizioni
         ]
 
@@ -670,10 +670,10 @@ def classifica_con_ai(
         
     except json.JSONDecodeError as e:
         logger.error(f"Errore parsing JSON da OpenAI: {e}")
-        return [applica_correzioni_dizionario(d, "NO FOOD") for d in lista_descrizioni]
+        return [applica_correzioni_dizionario(d, "MATERIALE DI CONSUMO") for d in lista_descrizioni]
     except Exception as e:
         logger.error(f"Errore classificazione AI: {e}")
-        return [applica_correzioni_dizionario(d, "NO FOOD") for d in lista_descrizioni]
+        return [applica_correzioni_dizionario(d, "MATERIALE DI CONSUMO") for d in lista_descrizioni]
 
 
 # ============================================================

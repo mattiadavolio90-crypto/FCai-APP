@@ -175,20 +175,20 @@ def estrai_nome_categoria(categoria_con_icona: str) -> str:
     Estrae solo il nome dalla categoria con icona.
     
     Args:
-        categoria_con_icona: "🍖 CARNE" o "CARNE" o "NO FOOD"
+        categoria_con_icona: "🍖 CARNE" o "CARNE" o "MATERIALE DI CONSUMO"
     
     Returns:
-        str: "CARNE" o "NO FOOD" (solo nome, senza emoji)
+        str: "CARNE" o "MATERIALE DI CONSUMO" (solo nome, senza emoji)
     
     Esempi:
         >>> estrai_nome_categoria("🍖 CARNE")
         'CARNE'
         >>> estrai_nome_categoria("CARNE")
         'CARNE'
-        >>> estrai_nome_categoria("📦 NO FOOD")
-        'NO FOOD'
-        >>> estrai_nome_categoria("NO FOOD")
-        'NO FOOD'
+        >>> estrai_nome_categoria("📦 MATERIALE DI CONSUMO")
+        'MATERIALE DI CONSUMO'
+        >>> estrai_nome_categoria("MATERIALE DI CONSUMO")
+        'MATERIALE DI CONSUMO'
         >>> estrai_nome_categoria("")
         'Da Classificare'
         >>> estrai_nome_categoria(None)
@@ -200,7 +200,7 @@ def estrai_nome_categoria(categoria_con_icona: str) -> str:
     categoria_clean = categoria_con_icona.strip()
     
     # ✅ FIX: Rimuovi solo emoji iniziali (caratteri non-ASCII all'inizio)
-    # NON splittare su spazi interni (es: "NO FOOD" deve restare intatto)
+    # NON splittare su spazi interni (es: "MATERIALE DI CONSUMO" deve restare intatto)
     import re
     # Pattern: rimuove emoji/simboli non-ASCII all'inizio + eventuali spazi dopo
     categoria_clean = re.sub(r'^[^\w\s]+\s*', '', categoria_clean)

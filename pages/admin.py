@@ -26,7 +26,7 @@ from utils.formatters import carica_categorie_da_db
 from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria
 
 # Importa costanti per filtri
-from config.constants import FORNITORI_NO_FOOD_KEYWORDS, CATEGORIE_SPESE_GENERALI
+from config.constants import CATEGORIE_SPESE_GENERALI
 
 # ============================================================
 # SETUP
@@ -588,16 +588,16 @@ def clienti_con_piu_errori():
             
             # Conta tipi problema
             prezzi_zero = int((df_user['prezzo_unitario'] == 0).sum())
-            no_food = int((df_user['categoria'] == 'NO FOOD').sum())
+            materiale_consumo = int((df_user['categoria'] == 'MATERIALE DI CONSUMO').sum())
             da_class = int((df_user['categoria'] == 'Da Classificare').sum())
             
-            totale_problemi = prezzi_zero + no_food + da_class
+            totale_problemi = prezzi_zero + materiale_consumo + da_class
             
             if totale_problemi > 0:
                 problemi_per_cliente.append({
                     'user_id': user_id,
                     'prezzi_zero': prezzi_zero,
-                    'no_food': no_food,
+                    'materiale_consumo': materiale_consumo,
                     'da_classificare': da_class,
                     'totale': totale_problemi
                 })
@@ -1038,6 +1038,17 @@ if tab1:
                 ultimo_caricamento = None
                 totale_costi_complessivi = 0
                 
+                # DEBUG: contatori per analisi
+                debug_info = {
+                    'totale_raw': 0,
+                    'escluse_note': 0,
+                    'escluse_review': 0,
+                    'escluse_date_invalide': 0,
+                    'incluse_finale': 0,
+                    'somma_totale_riga': 0.0,
+                    'righe_con_date': []
+                }
+                
                 if query_fatture.data:
                     # Conta file unici
                     file_unici = set([r['file_origine'] for r in query_fatture.data])
@@ -1058,20 +1069,45 @@ if tab1:
                     
                     # Calcola totale costi complessivi (ESCLUSE NOTE E DICITURE e needs_review)
                     for r in query_fatture.data:
+                        debug_info['totale_raw'] += 1
+                        
                         try:
                             categoria = str(r.get('categoria', '')).strip()
                             needs_review = r.get('needs_review', False)
+                            data_documento = r.get('data_documento')
+                            totale_riga = float(r.get('totale_riga', 0) or 0)
                             
                             # Escludi NOTE E DICITURE (righe a 0€)
                             if categoria == '📝 NOTE E DICITURE':
+                                debug_info['escluse_note'] += 1
                                 continue
                             
                             # Escludi righe in review (qualsiasi categoria)
                             if needs_review:
+                                debug_info['escluse_review'] += 1
                                 continue
                             
-                            totale_riga = float(r.get('totale_riga', 0) or 0)
+                            # Verifica data valida (come fa il client)
+                            try:
+                                data_dt = pd.to_datetime(data_documento, errors='coerce')
+                                if pd.isna(data_dt):
+                                    debug_info['escluse_date_invalide'] += 1
+                                    continue
+                            except:
+                                debug_info['escluse_date_invalide'] += 1
+                                continue
+                            
+                            debug_info['incluse_finale'] += 1
+                            debug_info['somma_totale_riga'] += totale_riga
                             totale_costi_complessivi += totale_riga
+                            
+                            # Salva info data per analisi (solo prime 5)
+                            if len(debug_info['righe_con_date']) < 5:
+                                debug_info['righe_con_date'].append({
+                                    'data': str(data_documento),
+                                    'importo': totale_riga,
+                                    'categoria': categoria
+                                })
                         except Exception as e:
                             logger.warning(f"Errore calcolo costo riga {r.get('id')}: {e}")
                             continue
@@ -1084,7 +1120,8 @@ if tab1:
                     'num_fatture': num_fatture,
                     'num_righe': num_righe,
                     'ultimo_caricamento': ultimo_caricamento,
-                    'totale_costi': totale_costi_complessivi
+                    'totale_costi': totale_costi_complessivi,
+                    'debug': debug_info
                 })
             
             df_clienti = pd.DataFrame(stats_clienti)
@@ -1183,6 +1220,34 @@ if tab1:
                             st.success(f"✅ Accesso come: {row['email']}")
                             time.sleep(0.8)
                             st.switch_page("app.py")
+                
+                # DEBUG INFO (espandibile)
+                if 'debug' in row:
+                    debug = row['debug']
+                    with st.expander(f"🔍 Debug {row['email']}", expanded=False):
+                        col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
+                        with col_d1:
+                            st.metric("Raw", debug['totale_raw'])
+                        with col_d2:
+                            st.metric("- Note", debug['escluse_note'])
+                        with col_d3:
+                            st.metric("- Review", debug['escluse_review'])
+                        with col_d4:
+                            st.metric("- Date Invalid", debug['escluse_date_invalide'])
+                        with col_d5:
+                            st.metric("✅ Finale", debug['incluse_finale'])
+                        
+                        st.divider()
+                        col_t1, col_t2 = st.columns(2)
+                        with col_t1:
+                            st.info(f"💰 **Somma calcolata**: €{debug['somma_totale_riga']:,.2f}")
+                        with col_t2:
+                            st.info(f"💰 **Totale finale**: €{row['totale_costi']:,.2f}")
+                        
+                        if debug['righe_con_date']:
+                            st.markdown("**Sample prime 5 righe incluse:**")
+                            for riga in debug['righe_con_date']:
+                                st.caption(f"📅 {riga['data']} | €{riga['importo']:.2f} | {riga['categoria']}")
                     
                     with col_menu:
                         # Menu azioni aggiuntive
