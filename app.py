@@ -708,13 +708,16 @@ def mostra_pagina_login():
                             if user.get('email') in ADMIN_EMAILS:
                                 st.session_state.user_is_admin = True
                                 logger.info(f"✅ Login ADMIN: {user.get('email')}")
+                                st.success("✅ Accesso effettuato come ADMIN!")
+                                time.sleep(0.5)
+                                # Reindirizza direttamente al pannello admin
+                                st.switch_page("pages/admin.py")
                             else:
                                 st.session_state.user_is_admin = False
                                 logger.info(f"✅ Login cliente: {user.get('email')}")
-                            
-                            st.success("✅ Accesso effettuato!")
-                            time.sleep(1)
-                            st.rerun()
+                                st.success("✅ Accesso effettuato!")
+                                time.sleep(1)
+                                st.rerun()
                         else:
                             st.error(f"❌ {errore}")
     
@@ -1634,6 +1637,7 @@ def mostra_statistiche(df_completo):
                                         'descrizione': desc,
                                         'categoria': cat,
                                         'volte_visto': 1,
+                                        'verified': False,  # ⚠️ Da verificare: classificazione automatica AI
                                         'classificato_da': 'AI'
                                     }, on_conflict='descrizione').execute()
                                     

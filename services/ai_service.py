@@ -382,6 +382,7 @@ def salva_correzione_in_memoria_globale(
                 'categoria': nuova_categoria,
                 'classificato_da': f'Utente ({user_email})',
                 'confidence': 'altissima',
+                'verified': True,  # ✅ Auto-verifica: correzione manuale = già controllata
                 'ultima_modifica': datetime.now().isoformat()
             }).eq('id', record['id']).execute()
             
@@ -397,6 +398,7 @@ def salva_correzione_in_memoria_globale(
                 'categoria': nuova_categoria,
                 'classificato_da': f'Utente ({user_email})',
                 'confidence': 'altissima',
+                'verified': True,  # ✅ Auto-verifica: correzione manuale = già controllata
                 'volte_visto': 1,
                 'created_at': datetime.now().isoformat(),
                 'ultima_modifica': datetime.now().isoformat()
@@ -514,6 +516,7 @@ def categorizza_con_memoria(
                 'descrizione': desc_normalized,
                 'categoria': categoria_keyword,
                 'confidence': 'media',
+                'verified': False,  # ⚠️ Da verificare: inserimento automatico
                 'volte_visto': 1,
                 'classificato_da': 'keyword',
                 'created_at': datetime.now().isoformat(),

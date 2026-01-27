@@ -1930,11 +1930,19 @@ def tab_memoria_globale_unificata():
     TAB Memoria Globale - VERSIONE DEFINITIVA
     - Mostra TUTTE le righe filtrate (no limite)
     - Scroll nativo Streamlit
-    - NO checkbox master
+    - Checkbox master funzionante
     - Info semplice
     """
     st.markdown("## 🧠 Memoria Globale Prodotti")
     st.caption("Gestisci classificazioni condivise tra tutti i clienti")
+    
+    # Funzione helper per toggle massivo
+    def toggle_all_rows(righe_ids, seleziona):
+        """Seleziona o deseleziona tutte le righe della pagina"""
+        if seleziona:
+            st.session_state.righe_selezionate.update(righe_ids)
+        else:
+            st.session_state.righe_selezionate.difference_update(righe_ids)
     
     # ============================================================
     # IDENTIFICA RUOLO
@@ -1955,11 +1963,21 @@ def tab_memoria_globale_unificata():
     @st.cache_data(ttl=60, show_spinner=False)
     def carica_memoria_completa():
         try:
+            campo_verified_exists = False
             if is_admin:
-                response = supabase.table('prodotti_master')\
-                    .select('id, descrizione, categoria, volte_visto, created_at')\
-                    .order('volte_visto', desc=True)\
-                    .execute()
+                # Prova prima con verified, se fallisce usa query base (retrocompatibilità)
+                try:
+                    response = supabase.table('prodotti_master')\
+                        .select('id, descrizione, categoria, volte_visto, created_at, verified')\
+                        .order('volte_visto', desc=True)\
+                        .execute()
+                    campo_verified_exists = True
+                except Exception:
+                    # Campo verified non esiste ancora, usa query senza
+                    response = supabase.table('prodotti_master')\
+                        .select('id, descrizione, categoria, volte_visto, created_at')\
+                        .order('volte_visto', desc=True)\
+                        .execute()
             else:
                 user_id = user.get('id')
                 response = supabase.table('prodotti_utente')\
@@ -1969,21 +1987,35 @@ def tab_memoria_globale_unificata():
                     .execute()
             
             df = pd.DataFrame(response.data)
-            return df
+            # Aggiungi colonna verified se non esiste (solo per UI, non nel DB)
+            if 'verified' not in df.columns:
+                df['verified'] = False  # Default: da verificare
+            return df, campo_verified_exists
         except Exception as e:
             logger.error(f"Errore caricamento memoria: {e}")
-            return pd.DataFrame()
+            return pd.DataFrame(), False
     
-    df_memoria = carica_memoria_completa()
+    df_memoria, campo_verified_exists = carica_memoria_completa()
     
     if df_memoria.empty:
         st.warning("📭 Memoria vuota. Inizia a caricare fatture per popolarla!")
         return
     
+    # ⚠️ AVVISO MIGRATION NECESSARIA (solo admin)
+    if is_admin and not campo_verified_exists:
+        st.warning("""
+        ⚠️ **Sistema Verifica Non Disponibile**: Il campo `verified` non esiste nel database.
+        
+        **Per abilitare la funzionalità di verifica prodotti:**
+        1. Apri [Supabase Dashboard SQL Editor](https://supabase.com/dashboard)
+        2. Copia ed esegui: `migrations/008_add_verified_to_prodotti_master.sql`
+        3. Oppure esegui: `python run_migration_008.py`
+        """)
+    
     # ============================================================
     # METRICHE
     # ============================================================
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric("Prodotti Totali", len(df_memoria))
@@ -1996,6 +2028,11 @@ def tab_memoria_globale_unificata():
         chiamate_risparmiate = totale_utilizzi - len(df_memoria)
         st.metric("Chiamate API Risparmiate", chiamate_risparmiate)
     
+    with col4:
+        if is_admin and campo_verified_exists:
+            non_verificati = (~df_memoria['verified']).sum()
+            st.metric("⚠️ Da Verificare", non_verificati)
+    
     st.markdown("---")
     
     # ============================================================
@@ -2003,7 +2040,7 @@ def tab_memoria_globale_unificata():
     # ============================================================
     st.markdown("### 🔍 Filtri")
     
-    col_search, col_cat, col_reset = st.columns([3, 2, 1])
+    col_search, col_cat, col_verified, col_reset = st.columns([3, 2, 2, 1])
     
     with col_search:
         # Inizializza session_state se non esiste
@@ -2029,11 +2066,27 @@ def tab_memoria_globale_unificata():
             key="filtro_cat"
         )
     
+    with col_verified:
+        # Filtro verified (SOLO per admin E se campo esiste)
+        if is_admin and campo_verified_exists:
+            if 'filtro_verified' not in st.session_state:
+                st.session_state.filtro_verified = "Da Verificare"  # Default: mostra solo non verificate
+            
+            filtro_verified = st.selectbox(
+                "Stato verifica",
+                ["Da Verificare", "Già Verificate", "Tutte"],
+                key="filtro_verified"
+            )
+        else:
+            filtro_verified = "Tutte"
+    
     with col_reset:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 Reset", key="reset_filtri"):
             st.session_state.search_memoria = ""
             st.session_state.filtro_cat = "Tutte"
+            if is_admin:
+                st.session_state.filtro_verified = "Da Verificare"
             st.rerun()
     
     # ============================================================
@@ -2042,7 +2095,7 @@ def tab_memoria_globale_unificata():
     df_filtrato = df_memoria.copy()
     
     # Traccia filtri precedenti per reset pagina
-    filtri_correnti = f"{search_text}_{filtro_cat}"
+    filtri_correnti = f"{search_text}_{filtro_cat}_{filtro_verified}"
     if 'filtri_memoria_prev' not in st.session_state:
         st.session_state.filtri_memoria_prev = filtri_correnti
     elif st.session_state.filtri_memoria_prev != filtri_correnti:
@@ -2058,6 +2111,13 @@ def tab_memoria_globale_unificata():
     if filtro_cat != "Tutte":
         cat_clean = estrai_nome_categoria(filtro_cat)
         df_filtrato = df_filtrato[df_filtrato['categoria'] == cat_clean]
+    
+    # FILTRO VERIFIED (solo admin e se campo esiste)
+    if is_admin and campo_verified_exists and filtro_verified != "Tutte":
+        if filtro_verified == "Da Verificare":
+            df_filtrato = df_filtrato[df_filtrato['verified'] == False]
+        elif filtro_verified == "Già Verificate":
+            df_filtrato = df_filtrato[df_filtrato['verified'] == True]
     
     # ORDINA ALFABETICAMENTE per descrizione
     df_filtrato = df_filtrato.sort_values('descrizione').reset_index(drop=True)
@@ -2107,10 +2167,18 @@ def tab_memoria_globale_unificata():
         st.caption(f"Righe {inizio + 1}-{fine} di {totale_righe}")
     
     # ============================================================
-    # INIZIALIZZA MODIFICHE PENDENTI
+    # INIZIALIZZA MODIFICHE PENDENTI E SELEZIONE
     # ============================================================
     if 'modifiche_memoria' not in st.session_state:
         st.session_state.modifiche_memoria = {}
+    
+    # Inizializza selezione righe per verifica (SOLO per admin)
+    if 'righe_selezionate' not in st.session_state:
+        st.session_state.righe_selezionate = set()
+    
+    # Contatore refresh per forzare ricreazione checkbox dopo selezione massiva
+    if 'checkbox_refresh_counter' not in st.session_state:
+        st.session_state.checkbox_refresh_counter = 0
     
     st.markdown("---")
     
@@ -2124,8 +2192,31 @@ def tab_memoria_globale_unificata():
     else:
         st.markdown("### 📋 Prodotti")
     
-    # HEADER TABELLA
-    col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
+    # HEADER TABELLA (con checkbox solo se admin, campo exists e filtro da verificare)
+    mostra_checkbox = is_admin and campo_verified_exists and filtro_verified == "Da Verificare"
+    
+    if mostra_checkbox:
+        # Bottoni per selezione massiva PRIMA della tabella
+        st.markdown("#### Selezione Rapida")
+        col_sel_all, col_desel_all = st.columns(2)
+        
+        with col_sel_all:
+            righe_pagina_ids = set(df_pagina['id'].tolist())
+            if st.button(f"☑️ Seleziona Tutte ({len(righe_pagina_ids)} righe)", use_container_width=True, key="btn_select_all"):
+                st.session_state.righe_selezionate.update(righe_pagina_ids)
+                st.session_state.checkbox_refresh_counter += 1  # Forza refresh checkbox
+                st.rerun()
+        
+        with col_desel_all:
+            if st.button("⬜ Deseleziona Tutte", use_container_width=True, key="btn_deselect_all"):
+                st.session_state.righe_selezionate.difference_update(righe_pagina_ids)
+                st.session_state.checkbox_refresh_counter += 1  # Forza refresh checkbox
+                st.rerun()
+        
+        st.markdown("---")
+        col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
+    else:
+        col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
     
     with col_desc:
         st.markdown("**Descrizione**")
@@ -2147,13 +2238,45 @@ def tab_memoria_globale_unificata():
         descrizione = row['descrizione']
         categoria_corrente = row['categoria']
         volte_visto = row['volte_visto']
+        verified = row.get('verified', True)
         
-        col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
+        # Prepara colonne (con o senza checkbox)
+        if mostra_checkbox:
+            col_check, col_desc, col_cat, col_azioni = st.columns([0.5, 3.5, 2.5, 1])
+        else:
+            col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
+        
+        # Prepara colonne (con o senza checkbox)
+        if mostra_checkbox:
+            col_check, col_desc, col_cat, col_azioni = st.columns([0.5, 3.5, 2.5, 1])
+        else:
+            col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
+        
+        # CHECKBOX (solo se admin e mostra righe da verificare)
+        if mostra_checkbox:
+            with col_check:
+                is_checked = row_id in st.session_state.righe_selezionate
+                # Key dinamica con refresh counter per forzare ricreazione dopo selezione massiva
+                checked = st.checkbox(
+                    "sel",
+                    value=is_checked,
+                    key=f"chk_{row_id}_r{st.session_state.checkbox_refresh_counter}",
+                    label_visibility="collapsed"
+                )
+                # Aggiorna stato in tempo reale
+                if checked:
+                    st.session_state.righe_selezionate.add(row_id)
+                else:
+                    st.session_state.righe_selezionate.discard(row_id)
         
         # DESCRIZIONE
         with col_desc:
             desc_short = descrizione[:50] + "..." if len(descrizione) > 50 else descrizione
-            st.markdown(f"`{desc_short}`")
+            # Emoji stato verifica
+            if not verified:
+                st.markdown(f"⚠️ `{desc_short}`")
+            else:
+                st.markdown(f"✅ `{desc_short}`")
         
         # DROPDOWN CATEGORIA (modifica inline)
         with col_cat:
@@ -2181,7 +2304,8 @@ def tab_memoria_globale_unificata():
                 st.session_state.modifiche_memoria[descrizione] = {
                     'nuova_categoria': cat_clean,
                     'occorrenze': volte_visto,
-                    'categoria_originale': categoria_corrente
+                    'categoria_originale': categoria_corrente,
+                    'row_id': row_id  # Serve per auto-verificare quando salvi
                 }
             elif descrizione in st.session_state.modifiche_memoria:
                 # Ripristinata categoria originale, rimuovi da pendenti
@@ -2196,6 +2320,64 @@ def tab_memoria_globale_unificata():
                 st.caption(f"{volte_visto}×")
         
         st.markdown("---")
+    
+    # ============================================================
+    # BARRA CONFERMA RIGHE VERIFICATE (sempre visibile se admin e campo exists)
+    # ============================================================
+    # Ricalcola num_selezionate DOPO il ciclo (quando le checkbox hanno aggiornato lo stato)
+    num_selezionate = len(st.session_state.righe_selezionate)
+    
+    if is_admin and campo_verified_exists:
+        st.markdown("---")
+        st.markdown("### ✅ Conferma Verifiche")
+        
+        if num_selezionate > 0:
+            st.info(f"📊 **{num_selezionate}** righe selezionate per conferma")
+        else:
+            st.info("📊 **0** righe selezionate - Seleziona righe da verificare")
+        
+        col_conferma, col_deselect = st.columns([2, 1])
+        
+        with col_conferma:
+            if st.button(
+                f"✅ Conferma {num_selezionate} righe verificate" if num_selezionate > 0 else "✅ Nessuna riga selezionata",
+                type="primary", 
+                use_container_width=True, 
+                key="conferma_righe",
+                disabled=(num_selezionate == 0)
+            ):
+                with st.spinner(f"✅ Conferma {num_selezionate} righe in corso..."):
+                    try:
+                        # Aggiorna tutte le righe selezionate impostando verified = True
+                        righe_ids = list(st.session_state.righe_selezionate)
+                        
+                        # Batch update (Supabase supporta .in_() per multipli ID)
+                        supabase.table('prodotti_master')\
+                            .update({'verified': True})\
+                            .in_('id', righe_ids)\
+                            .execute()
+                        
+                        # Reset selezione
+                        st.session_state.righe_selezionate = set()
+                        st.cache_data.clear()
+                        
+                        st.success(f"✅ {num_selezionate} righe confermate!")
+                        time.sleep(1)
+                        st.rerun()
+                        
+                    except Exception as e:
+                        logger.error(f"Errore conferma righe: {e}")
+                        st.error(f"❌ Errore durante la conferma: {e}")
+        
+        with col_deselect:
+            if st.button(
+                "❌ Deseleziona Tutte", 
+                use_container_width=True, 
+                key="deselect_righe",
+                disabled=(num_selezionate == 0)
+            ):
+                st.session_state.righe_selezionate = set()
+                st.rerun()
     
     # ============================================================
     # BARRA AZIONI BATCH (se ci sono modifiche)
@@ -2229,9 +2411,12 @@ def tab_memoria_globale_unificata():
                         try:
                             # AGGIORNA TUTTE LE RIGHE CON STESSA DESCRIZIONE
                             if is_admin:
-                                # Admin: aggiorna memoria globale
+                                # Admin: aggiorna memoria globale + marca come verificata (correzione manuale)
                                 supabase.table('prodotti_master')\
-                                    .update({'categoria': info['nuova_categoria']})\
+                                    .update({
+                                        'categoria': info['nuova_categoria'],
+                                        'verified': True  # ✅ Auto-verifica: correzione manuale = già controllata
+                                    })\
                                     .eq('descrizione', descrizione)\
                                     .execute()
                                 
