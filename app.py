@@ -70,6 +70,11 @@ from utils.validation import (
     is_prezzo_valido
 )
 
+from utils.piva_validator import (
+    valida_formato_piva,
+    normalizza_piva
+)
+
 from utils.formatters import (
     converti_in_base64,
     safe_get,
@@ -547,6 +552,138 @@ if st.query_params.get("logout") == "1":
 
 
 # ============================================================
+# GESTIONE TOKEN RESET PASSWORD (NUOVO CLIENTE + RECUPERO PASSWORD)
+# ============================================================
+# Se c'è il parametro reset_token, mostra form impostazione password
+if st.query_params.get("reset_token"):
+    from services.auth_service import imposta_password_da_token, valida_password_compliance
+    
+    reset_token = st.query_params.get("reset_token")
+    
+    # Nascondi sidebar per pagina pulita
+    st.markdown("""
+        <style>
+        [data-testid="stSidebar"] { display: none !important; }
+        [data-testid="collapsedControl"] { display: none !important; }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    st.title("🔐 Imposta la tua Password")
+    
+    # Verifica token valido
+    try:
+        check_result = supabase.table('users')\
+            .select('id, email, nome_ristorante, reset_expires, password_hash')\
+            .eq('reset_code', reset_token)\
+            .execute()
+        
+        if not check_result.data:
+            st.error("❌ Link non valido o già utilizzato")
+            st.info("💡 Se hai già impostato la password, vai al login. Altrimenti contatta il supporto per un nuovo link.")
+            if st.button("🔑 Vai al Login"):
+                st.query_params.clear()
+                st.rerun()
+            st.stop()
+        
+        user_data = check_result.data[0]
+        
+        # Check scadenza token
+        from datetime import datetime, timezone as tz
+        expires_str = user_data.get('reset_expires')
+        if expires_str:
+            try:
+                expires = datetime.fromisoformat(expires_str.replace('Z', '+00:00'))
+                now_utc = datetime.now(tz.utc)
+                
+                if now_utc > expires:
+                    st.error("⏰ Link scaduto (validità: 24 ore)")
+                    st.info("💡 Contatta il supporto per ricevere un nuovo link di attivazione.")
+                    st.stop()
+            except Exception as e:
+                logger.warning(f"Errore parsing data scadenza token: {e}")
+        
+        # Mostra info utente
+        is_nuovo_cliente = user_data.get('password_hash') is None
+        
+        if is_nuovo_cliente:
+            st.success(f"✅ Benvenuto, **{user_data.get('nome_ristorante')}**!")
+            st.info(f"📧 Il tuo account: **{user_data.get('email')}**")
+            st.markdown("Imposta una password sicura per accedere all'app.")
+        else:
+            st.info(f"📧 Reset password per: **{user_data.get('email')}**")
+        
+        # Form impostazione password
+        with st.form("form_imposta_password"):
+            nuova_password = st.text_input(
+                "🔑 Nuova Password",
+                type="password",
+                help="Minimo 10 caratteri, con maiuscola, minuscola e numero"
+            )
+            
+            conferma_password = st.text_input(
+                "🔑 Conferma Password",
+                type="password"
+            )
+            
+            st.markdown("""
+            **Requisiti password:**
+            - ✅ Almeno 10 caratteri
+            - ✅ Almeno 3 tra: maiuscola, minuscola, numero, simbolo
+            - ❌ Non usare email o nome ristorante
+            - ❌ Non usare password comuni
+            """)
+            
+            submitted = st.form_submit_button("✅ Conferma Password", type="primary", use_container_width=True)
+            
+            if submitted:
+                # Validazioni
+                if not nuova_password or not conferma_password:
+                    st.error("⚠️ Compila entrambi i campi password")
+                elif nuova_password != conferma_password:
+                    st.error("❌ Le password non coincidono")
+                else:
+                    # Valida compliance GDPR
+                    errori = valida_password_compliance(
+                        nuova_password,
+                        user_data.get('email', ''),
+                        user_data.get('nome_ristorante', '')
+                    )
+                    
+                    if errori:
+                        for err in errori:
+                            st.error(err)
+                    else:
+                        # Imposta password
+                        successo, messaggio, _ = imposta_password_da_token(
+                            reset_token,
+                            nuova_password,
+                            supabase
+                        )
+                        
+                        if successo:
+                            st.success("""
+                            🎉 **Password impostata con successo!**
+                            
+                            Ora puoi effettuare il login con la tua email e password.
+                            """)
+                            st.balloons()
+                            
+                            # Pulisci token da URL
+                            import time
+                            time.sleep(2)
+                            st.query_params.clear()
+                            st.rerun()
+                        else:
+                            st.error(messaggio)
+    
+    except Exception as e:
+        st.error(f"❌ Errore durante verifica token: {e}")
+        logger.exception("Errore verifica reset_token")
+    
+    st.stop()  # Non mostrare resto app
+
+
+# ============================================================
 # FUNZIONI AUTENTICAZIONE (SPOSTATA IN services/auth_service.py)
 # ============================================================
 
@@ -721,6 +858,10 @@ def mostra_pagina_login():
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
                             
+                            # Salva P.IVA in session_state per validazione fatture
+                            st.session_state.partita_iva = user.get('partita_iva')
+                            st.session_state.created_at = user.get('created_at')
+                            
                             # Verifica se è admin e imposta flag
                             if user.get('email') in ADMIN_EMAILS:
                                 st.session_state.user_is_admin = True
@@ -731,7 +872,7 @@ def mostra_pagina_login():
                                 st.switch_page("pages/admin.py")
                             else:
                                 st.session_state.user_is_admin = False
-                                logger.info(f"✅ Login cliente: {user.get('email')}")
+                                logger.info(f"✅ Login cliente: {user.get('email')} | P.IVA: {user.get('partita_iva', 'N/A')}")
                                 st.success("✅ Accesso effettuato!")
                                 time.sleep(1)
                                 st.rerun()
@@ -4627,6 +4768,29 @@ if uploaded_files:
                     try:
                         if nome_file.endswith('.xml'):
                             items = estrai_dati_da_xml(file)
+                            
+                            # ============================================================
+                            # VALIDAZIONE P.IVA CESSIONARIO (Anti-abuso)
+                            # ============================================================
+                            # Estrai P.IVA dal cessionario (destinatario fattura)
+                            piva_cessionario = items.get('piva_cessionario') if isinstance(items, dict) else None
+                            user_piva = st.session_state.get('partita_iva')
+                            
+                            # Se utente ha P.IVA registrata E fattura ha P.IVA cessionario
+                            if user_piva and piva_cessionario:
+                                piva_cessionario_norm = normalizza_piva(piva_cessionario)
+                                user_piva_norm = normalizza_piva(user_piva)
+                                
+                                if piva_cessionario_norm != user_piva_norm:
+                                    raise ValueError(
+                                        f"P.IVA destinatario ({piva_cessionario}) non corrisponde "
+                                        f"al tuo account ({user_piva}). Contatta l'assistenza se hai più ristoranti."
+                                    )
+                            
+                            # Log per debug (solo admin)
+                            if st.session_state.get('user_is_admin', False):
+                                logger.debug(f"P.IVA check: user={user_piva}, fattura={piva_cessionario}")
+                            
                         elif nome_file.endswith(('.pdf', '.jpg', '.jpeg', '.png')):
                             items = estrai_dati_da_scontrino_vision(file)
                         else:

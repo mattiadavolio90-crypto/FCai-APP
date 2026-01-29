@@ -71,7 +71,7 @@ def estrai_dati_da_xml(file_caricato):
         current_user_id = st.session_state.get('user_data', {}).get('id')
         if current_user_id:
             carica_memoria_completa(current_user_id)
-            logger.info("âœ… Cache memoria precaricata per elaborazione XML")
+            logger.info("✅ Cache memoria precaricata per elaborazione XML")
         
         contenuto = file_caricato.read()
         doc = xmltodict.parse(contenuto)
@@ -87,6 +87,15 @@ def estrai_dati_da_xml(file_caricato):
         )
         
         fornitore = estrai_fornitore_xml(fattura)
+        
+        # ============================================================
+        # ESTRAZIONE P.IVA CESSIONARIO (destinatario fattura)
+        # ============================================================
+        # Legge <CessionarioCommittente><IdFiscaleIVA><IdCodice>
+        # Usato per validazione: fattura appartiene a questo cliente?
+        piva_cessionario = estrai_piva_cessionario_xml(fattura)
+        if piva_cessionario:
+            logger.info(f"📋 P.IVA Cessionario estratta: {piva_cessionario}")
         
         body = safe_get(fattura, ['FatturaElettronicaBody'], default={}, keep_list=False)
         
@@ -227,7 +236,8 @@ def estrai_dati_da_xml(file_caricato):
                     'Data_Documento': data_documento,
                     'File_Origine': file_caricato.name,
                     'Prezzo_Standard': prezzo_std,
-                    'needs_review': needs_review
+                    'needs_review': needs_review,
+                    'piva_cessionario': piva_cessionario  # P.IVA destinatario fattura
                 })
             except Exception as e:
                 logger.warning(f"{file_caricato.name} - Riga {idx} skippata: {str(e)[:100]}")
@@ -241,6 +251,60 @@ def estrai_dati_da_xml(file_caricato):
         logger.exception(f"Errore lettura XML: {getattr(file_caricato, 'name', 'sconosciuto')}")
         st.warning(f"âš ï¸ File {file_caricato.name}: impossibile leggere")
         return []
+
+
+def estrai_piva_cessionario_xml(fattura: dict) -> str:
+    """
+    Estrae P.IVA del cessionario (destinatario fattura) da XML.
+    
+    IMPORTANTE: Legge <CessionarioCommittente> (chi RICEVE la fattura),
+    NON <CedentePrestatore> (chi EMETTE la fattura).
+    
+    Args:
+        fattura: Dizionario parsed da xmltodict
+    
+    Returns:
+        str: P.IVA cessionario (11 cifre) o None se non trovata
+    """
+    try:
+        # Percorso primario: FatturaElettronicaHeader > CessionarioCommittente
+        cessionario = safe_get(
+            fattura,
+            ['FatturaElettronicaHeader', 'CessionarioCommittente', 'DatiAnagrafici', 'IdFiscaleIVA'],
+            default=None,
+            keep_list=False
+        )
+        
+        if cessionario:
+            id_paese = cessionario.get('IdPaese', '')
+            id_codice = cessionario.get('IdCodice', '')
+            
+            # Valida formato P.IVA italiana
+            if id_paese == 'IT' and id_codice and len(str(id_codice)) == 11:
+                return str(id_codice)
+            elif id_codice:
+                # P.IVA estera o formato non standard
+                logger.warning(f"P.IVA cessionario non italiana: {id_paese}{id_codice}")
+                return str(id_codice)
+        
+        # Fallback: cerca in altri percorsi possibili
+        cessionario_alt = safe_get(
+            fattura,
+            ['CessionarioCommittente', 'DatiAnagrafici', 'IdFiscaleIVA'],
+            default=None,
+            keep_list=False
+        )
+        
+        if cessionario_alt:
+            id_codice = cessionario_alt.get('IdCodice', '')
+            if id_codice and len(str(id_codice)) == 11:
+                return str(id_codice)
+        
+        return None
+        
+    except Exception as e:
+        logger.warning(f"Errore estrazione P.IVA cessionario: {e}")
+        return None
 
 
 def estrai_dati_da_scontrino_vision(file_caricato, openai_client=None):

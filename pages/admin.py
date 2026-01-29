@@ -879,132 +879,212 @@ if tab1:
     st.caption("Visualizza statistiche clienti e accedi come utente impersonando account")
     
     # ============================================================
-    # CREA NUOVO CLIENTE (solo admin)
+    # CREA NUOVO CLIENTE (solo admin) - GDPR COMPLIANT
+    # ============================================================
+    # L'admin NON imposta password. Il cliente la imposta via link email.
     # ============================================================
     st.markdown("### ➕ Crea Nuovo Cliente")
     
     with st.expander("➕ Crea Nuovo Cliente", expanded=False):
+        # Import validatore P.IVA
+        from utils.piva_validator import valida_formato_piva, normalizza_piva
+        from services.auth_service import crea_cliente_con_token
+        
+        st.info("📧 **GDPR Compliant**: Il cliente riceverà un'email per impostare la propria password. L'admin non conosce mai le password dei clienti.")
+        
         col1, col2 = st.columns(2)
         
         with col1:
-            new_email = st.text_input("📧 Email cliente", key="new_email", placeholder="cliente@esempio.com")
-            new_name = st.text_input("🏪 Nome ristorante", key="new_name", placeholder="Es: Ristorante Da Mario")
+            new_email = st.text_input(
+                "📧 Email cliente *", 
+                key="new_email", 
+                placeholder="cliente@esempio.com",
+                help="Email per login cliente"
+            )
+            new_name = st.text_input(
+                "🏪 Nome ristorante *", 
+                key="new_name", 
+                placeholder="Es: Ristorante Da Mario",
+                help="Nome locale"
+            )
         
         with col2:
-            new_password = st.text_input("🔑 Password temporanea (min 8 caratteri)", type="password", key="new_pwd", placeholder="Password sicura")
-            confirm_password = st.text_input("🔑 Conferma password", type="password", key="confirm_pwd", placeholder="Ripeti password")
+            new_piva = st.text_input(
+                "🏢 Partita IVA *", 
+                key="new_piva", 
+                placeholder="12345678901",
+                max_chars=11,
+                help="11 cifre numeriche"
+            )
+            new_ragione_sociale = st.text_input(
+                "📄 Ragione Sociale", 
+                key="new_ragione_sociale", 
+                placeholder="Mario Rossi S.r.l. (opzionale)",
+                help="Nome ufficiale azienda (opzionale)"
+            )
+        
+        # Validazione real-time P.IVA
+        if new_piva:
+            piva_norm = normalizza_piva(new_piva)
+            if len(piva_norm) == 11:
+                valida, msg = valida_formato_piva(piva_norm)
+                if valida:
+                    st.success(f"✅ P.IVA valida: {piva_norm}")
+                else:
+                    st.error(msg)
+            elif len(piva_norm) > 0:
+                st.warning(f"⚠️ P.IVA incompleta: {len(piva_norm)}/11 cifre")
         
         st.markdown("---")
         
-        if st.button("🆕 Crea Account Cliente", type="primary", use_container_width=True):
+        if st.button("🆕 Crea Account e Invia Email", type="primary", use_container_width=True):
             # Validazione input
-            if not new_email or not new_name or not new_password or not confirm_password:
-                st.error("⚠️ Compila tutti i campi")
-            elif new_password != confirm_password:
-                st.error("❌ Le password non coincidono")
-            elif len(new_password) < 8:
-                st.error("❌ Password troppo corta (minimo 8 caratteri)")
-            elif '@' not in new_email:
-                st.error("❌ Email non valida")
+            errori_form = []
+            
+            if not new_email or '@' not in new_email:
+                errori_form.append("❌ Email non valida")
+            
+            if not new_name:
+                errori_form.append("❌ Nome ristorante obbligatorio")
+            
+            if not new_piva:
+                errori_form.append("❌ P.IVA obbligatoria")
+            else:
+                piva_valida, piva_msg = valida_formato_piva(new_piva)
+                if not piva_valida:
+                    errori_form.append(piva_msg)
+            
+            if errori_form:
+                for err in errori_form:
+                    st.error(err)
             else:
                 try:
-                    # Verifica se email già esiste
-                    check_existing = supabase.table('users').select('id').eq('email', new_email).execute()
+                    # Crea cliente con token (senza password)
+                    successo, messaggio, token = crea_cliente_con_token(
+                        email=new_email,
+                        nome_ristorante=new_name,
+                        partita_iva=new_piva,
+                        ragione_sociale=new_ragione_sociale,
+                        supabase_client=supabase
+                    )
                     
-                    if check_existing.data:
-                        st.error(f"❌ Email {new_email} già registrata")
+                    if not successo:
+                        st.error(messaggio)
                     else:
-                        # Hash password con Argon2
-                        import argon2
-                        ph = argon2.PasswordHasher()
-                        password_hash = ph.hash(new_password)
-                        
-                        # Inserisci nuovo utente
-                        nuovo_utente = {
-                            'email': new_email,
-                            'nome_ristorante': new_name,
-                            'password_hash': password_hash,
-                            'attivo': True,
-                            'created_at': datetime.now(timezone.utc).isoformat()
-                        }
-                        
-                        result = supabase.table('users').insert(nuovo_utente).execute()
-                        
-                        if result.data:
-                            # ===== INVIO EMAIL AUTOMATICO BREVO =====
-                            email_inviata = False
-                            try:
-                                brevo_api_key = st.secrets["brevo"]["api_key"]
-                                sender_email = st.secrets["brevo"]["sender_email"]
-                                app_url = st.secrets.get("app", {}).get("url", "https://envoicescan-ai.streamlit.app")
+                        # Invia email con link attivazione
+                        email_inviata = False
+                        try:
+                            brevo_api_key = st.secrets["brevo"]["api_key"]
+                            sender_email = st.secrets["brevo"]["sender_email"]
+                            app_url = st.secrets.get("app", {}).get("url", "https://envoicescan-ai.streamlit.app")
+                            
+                            # Link con token per impostare password
+                            link_attivazione = f"{app_url}?reset_token={token}"
+                            
+                            url_brevo = "https://api.brevo.com/v3/smtp/email"
+                            
+                            email_html = f"""
+                            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                                <h2 style="color: #2c5aa0;">🎉 Benvenuto in ANALISI FATTURE AI!</h2>
+                                <p>Ciao <strong>{new_name}</strong>,</p>
+                                <p>Il tuo account è stato creato con successo dal nostro team.</p>
                                 
-                                url_brevo = "https://api.brevo.com/v3/smtp/email"
+                                <p><strong>Per iniziare, imposta la tua password personale:</strong></p>
                                 
-                                email_html = f"""
-                                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                                    <h2 style="color: #0ea5e9;">📧 Benvenuto in Analisi Fatture AI</h2>
-                                    <p>Il tuo account è stato creato con successo!</p>
-                                    
-                                    <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                                        <p><strong>📧 Email:</strong> {new_email}</p>
-                                        <p><strong>🔑 Password:</strong> <code style="background: #e2e8f0; padding: 4px 8px; border-radius: 4px;">{new_password}</code></p>
-                                    </div>
-                                    
-                                    <p style="margin: 25px 0;">
-                                        <a href="{app_url}" style="display: inline-block; background: #0ea5e9; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">
-                                            🚀 Accedi all'App
-                                        </a>
-                                    </p>
-                                    
-                                    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
-                                    <p style="color: #94a3b8; font-size: 12px;">
-                                        Questa email è stata generata automaticamente. Se non hai richiesto la creazione di questo account, contatta l'amministratore.
-                                    </p>
+                                <div style="text-align: center; margin: 30px 0;">
+                                    <a href="{link_attivazione}" 
+                                       style="background-color: #0ea5e9; 
+                                              color: white; 
+                                              padding: 15px 30px; 
+                                              text-decoration: none; 
+                                              border-radius: 6px; 
+                                              display: inline-block;
+                                              font-weight: bold;">
+                                        🔐 Imposta Password
+                                    </a>
                                 </div>
-                                """
                                 
-                                payload = {
-                                    "sender": {"email": sender_email, "name": "Analisi Fatture AI"},
-                                    "to": [{"email": new_email, "name": new_name}],
-                                    "cc": [{"email": "mattiadavolio90@gmail.com"}],
-                                    "subject": "🆕 Benvenuto - Credenziali Accesso Analisi Fatture AI",
-                                    "htmlContent": email_html
-                                }
+                                <p style="color: #dc2626;">
+                                    ⚠️ <strong>Importante:</strong> Questo link scade tra <strong>24 ore</strong> per sicurezza.
+                                </p>
                                 
-                                response = requests.post(
-                                    url_brevo, 
-                                    json=payload, 
-                                    headers={
-                                        "api-key": brevo_api_key,
-                                        "Content-Type": "application/json"
-                                    },
-                                    timeout=10
-                                )
+                                <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
                                 
-                                if response.status_code == 201:
-                                    email_inviata = True
-                                    logger.info(f"✅ Email credenziali inviata a {new_email}")
-                                else:
-                                    logger.warning(f"⚠️ Email non inviata: {response.status_code} - {response.text}")
-                                    
-                            except Exception as e:
-                                logger.error(f"❌ Errore invio email: {e}")
+                                <p><strong>📧 La tua email di accesso:</strong> {new_email}</p>
+                                <p><strong>🏢 P.IVA registrata:</strong> {normalizza_piva(new_piva)}</p>
+                                
+                                <p>Dopo aver impostato la password, potrai:</p>
+                                <ul>
+                                    <li>✅ Caricare fatture XML automaticamente</li>
+                                    <li>📊 Vedere dashboard analytics in tempo reale</li>
+                                    <li>🔔 Ricevere alert su anomalie prezzi</li>
+                                </ul>
+                                
+                                <p style="margin-top: 30px; color: #666; font-size: 14px;">
+                                    Hai domande? Rispondi a questa email, siamo qui per aiutarti!
+                                </p>
+                                
+                                <p style="color: #666; font-size: 14px;">
+                                    ---<br>
+                                    <strong>ANALISI FATTURE AI Team</strong><br>
+                                    <a href="https://app-fci.streamlit.app">app-fci.streamlit.app</a>
+                                </p>
+                            </div>
+                            """
                             
-                            # Mostra messaggio di successo
-                            if email_inviata:
-                                st.success(f"✅ Cliente {new_email} creato con successo!")
-                                st.info(f"📧 Email con credenziali inviata automaticamente a: **{new_email}**")
+                            payload = {
+                                "sender": {"email": sender_email, "name": "ANALISI FATTURE AI"},
+                                "to": [{"email": new_email, "name": new_name}],
+                                "bcc": [{"email": "mattiadavolio90@gmail.com"}],
+                                "subject": f"🆕 Benvenuto {new_name} - Imposta la tua Password",
+                                "htmlContent": email_html
+                            }
+                            
+                            response = requests.post(
+                                url_brevo, 
+                                json=payload, 
+                                headers={
+                                    "api-key": brevo_api_key,
+                                    "Content-Type": "application/json"
+                                },
+                                timeout=10
+                            )
+                            
+                            if response.status_code == 201:
+                                email_inviata = True
+                                logger.info(f"✅ Email attivazione inviata a {new_email}")
                             else:
-                                st.success(f"✅ Cliente {new_email} creato con successo!")
-                                st.warning(f"⚠️ Errore invio email automatico. Comunica manualmente le credenziali:")
-                                st.info(f"📧 Email: {new_email}\n🔑 Password temporanea: {new_password}")
+                                logger.warning(f"⚠️ Email non inviata: {response.status_code} - {response.text}")
+                                
+                        except Exception as e:
+                            logger.error(f"❌ Errore invio email: {e}")
+                        
+                        # Mostra messaggio di successo
+                        if email_inviata:
+                            st.success(f"""
+                            ✅ **Cliente creato con successo!**
                             
-                            logger.info(f"✅ Nuovo cliente creato da admin: {new_email} | Email inviata: {email_inviata}")
-                            time.sleep(2)
-                            st.rerun()
+                            📧 Email inviata a: **{new_email}**
+                            🔗 Link attivazione valido per: **24 ore**
+                            🏢 P.IVA: **{normalizza_piva(new_piva)}**
+                            
+                            Il cliente riceverà un'email per impostare la propria password.
+                            """)
                         else:
-                            st.error("❌ Errore durante la creazione dell'account")
+                            st.success(f"✅ Cliente {new_email} creato con successo!")
+                            st.warning("⚠️ Errore invio email automatico.")
+                            st.info(f"""
+                            📋 **Comunica manualmente al cliente:**
                             
+                            Link attivazione: `{link_attivazione}`
+                            
+                            Il link scade tra 24 ore.
+                            """)
+                        
+                        logger.info(f"✅ Nuovo cliente creato da admin: {new_email} | P.IVA: {normalizza_piva(new_piva)} | Email: {email_inviata}")
+                        time.sleep(2)
+                        st.rerun()
+                        
                 except Exception as e:
                     st.error(f"❌ Errore creazione cliente: {e}")
                     logger.exception(f"Errore creazione cliente {new_email}")
@@ -1012,11 +1092,24 @@ if tab1:
     st.markdown("---")
     
     try:
-        # Query utenti
-        query_users = supabase.table('users')\
-            .select('id, email, nome_ristorante, attivo, created_at')\
-            .order('email')\
-            .execute()
+        # Query utenti (retrocompatibile: prova con partita_iva, fallback senza)
+        try:
+            query_users = supabase.table('users')\
+                .select('id, email, nome_ristorante, attivo, created_at, partita_iva, ragione_sociale')\
+                .order('email')\
+                .execute()
+            has_piva_column = True
+        except Exception as col_err:
+            # Fallback: colonne partita_iva non ancora migrate
+            if '42703' in str(col_err) or 'does not exist' in str(col_err):
+                query_users = supabase.table('users')\
+                    .select('id, email, nome_ristorante, attivo, created_at')\
+                    .order('email')\
+                    .execute()
+                has_piva_column = False
+                st.warning("⚠️ Esegui migrazione 009 per abilitare P.IVA")
+            else:
+                raise col_err
         
         if not query_users.data:
             st.info("📭 Nessun cliente registrato")
@@ -1117,6 +1210,8 @@ if tab1:
                     'email': user_data['email'],
                     'ristorante': user_data.get('nome_ristorante', 'N/A'),
                     'attivo': user_data.get('attivo', True),
+                    'partita_iva': user_data.get('partita_iva'),
+                    'ragione_sociale': user_data.get('ragione_sociale'),
                     'num_fatture': num_fatture,
                     'num_righe': num_righe,
                     'ultimo_caricamento': ultimo_caricamento,
@@ -1150,8 +1245,13 @@ if tab1:
             df_clienti_sorted = df_clienti.sort_values('ultimo_caricamento', ascending=False, na_position='last')
             
             # ===== TABELLA CLIENTI CON IMPERSONAZIONE =====
+            # Layout dinamico: con/senza colonna P.IVA in base a migrazione
             for idx, row in df_clienti_sorted.iterrows():
-                col1, col2, col3, col4, col5, col6, col7 = st.columns([2.5, 2, 1, 1, 1.5, 1.5, 1])
+                if has_piva_column:
+                    col1, col2, col_piva, col3, col4, col5, col6, col7 = st.columns([2.5, 1.8, 1.5, 0.8, 0.8, 1.3, 1.2, 1])
+                else:
+                    col1, col2, col3, col4, col5, col6, col7 = st.columns([2.5, 2, 1, 1, 1.5, 1.5, 1])
+                    col_piva = None
                 
                 with col1:
                     status_icon = "🟢" if row['attivo'] else "🔴"
@@ -1159,6 +1259,15 @@ if tab1:
                 
                 with col2:
                     st.text(row['ristorante'])
+                
+                if col_piva:
+                    with col_piva:
+                        # P.IVA con badge
+                        piva = row.get('partita_iva')
+                        if piva:
+                            st.caption(f"🏢 {piva}")
+                        else:
+                            st.caption("⚠️ P.IVA mancante")
                 
                 with col3:
                     st.caption(f"📄 {row['num_fatture']}")
@@ -1287,34 +1396,65 @@ if tab1:
                             
                             st.markdown("---")
                             
-                            # AZIONE 2: Reset Password
+                            # AZIONE 2: Invia Email Reset Password (GDPR compliant)
                             st.markdown("**Reset Password**")
-                            nuova_password = st.text_input(
-                                "Nuova password",
-                                type="password",
-                                key=f"pwd_{row['user_id']}",
-                                placeholder="Min 6 caratteri"
-                            )
+                            st.caption("Il cliente riceverà un'email per impostare la nuova password")
                             
-                            if st.button("🔑 Cambia Password", key=f"reset_{row['user_id']}", type="primary", use_container_width=True, disabled=len(nuova_password)<6):
+                            if st.button("📧 Invia Email Reset", key=f"reset_{row['user_id']}", type="primary", use_container_width=True):
                                 try:
-                                    import hashlib
-                                    password_hash = hashlib.sha256(nuova_password.encode()).hexdigest()
+                                    import uuid
+                                    from datetime import datetime, timedelta
                                     
+                                    # Genera token reset (1 ora validità)
+                                    reset_token = str(uuid.uuid4())
+                                    expires_at = datetime.now() + timedelta(hours=1)
+                                    
+                                    # Salva token nel database
                                     supabase.table('users')\
-                                        .update({'password': password_hash})\
+                                        .update({
+                                            'reset_token': reset_token,
+                                            'reset_token_expires_at': expires_at.isoformat()
+                                        })\
                                         .eq('id', row['user_id'])\
                                         .execute()
                                     
-                                    logger.info(f"🔑 Password resettata per: {row['email']}")
-                                    st.success(f"Password aggiornata per {row['email']}")
+                                    # Invia email con link reset
+                                    from services.email_service import invia_email
+                                    
+                                    # Costruisci URL reset
+                                    base_url = st.secrets.get("app", {}).get("base_url", "http://localhost:8501")
+                                    reset_url = f"{base_url}/?reset_token={reset_token}"
+                                    
+                                    email_inviata = invia_email(
+                                        destinatario=row['email'],
+                                        oggetto="🔑 Reset Password - ANALISI FATTURE AI",
+                                        corpo_html=f"""
+                                        <h2>Reset Password Richiesto</h2>
+                                        <p>Ciao,</p>
+                                        <p>L'amministratore ha richiesto un reset della tua password.</p>
+                                        <p>Clicca sul link per impostare una nuova password:</p>
+                                        <p><a href="{reset_url}" style="background-color:#4CAF50;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">Imposta Nuova Password</a></p>
+                                        <p><small>Link valido per 1 ora: {reset_url}</small></p>
+                                        <hr>
+                                        <p><small>Se non hai richiesto questo reset, ignora questa email.</small></p>
+                                        """
+                                    )
+                                    
+                                    if email_inviata:
+                                        logger.info(f"📧 Email reset password inviata a: {row['email']}")
+                                        st.success(f"✅ Email inviata a {row['email']}")
+                                    else:
+                                        st.warning(f"⚠️ Token generato ma email non inviata. Link: {reset_url}")
+                                    
                                     time.sleep(1.5)
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Errore: {e}")
-                            
-                            if len(nuova_password) > 0 and len(nuova_password) < 6:
-                                st.caption("⚠️ Password troppo corta")
+                                    # Fallback se colonne reset_token non esistono
+                                    if '42703' in str(e) or 'does not exist' in str(e):
+                                        st.error("⚠️ Esegui migrazione 009 per abilitare reset password via email")
+                                    else:
+                                        st.error(f"Errore: {e}")
+                                        logger.exception(f"Errore invio email reset: {e}")
                             
                             st.markdown("---")
                             
