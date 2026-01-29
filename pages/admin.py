@@ -1241,8 +1241,53 @@ if tab1:
             st.markdown("---")
             st.markdown("#### 👥 Lista Clienti")
             
+            # ===== FILTRI RICERCA =====
+            st.markdown("##### 🔍 Filtri Ricerca")
+            col_f1, col_f2, col_f3 = st.columns(3)
+            
+            with col_f1:
+                cerca_email = st.text_input("📧 Cerca per email", "", key="filtro_email_admin")
+            
+            with col_f2:
+                cerca_piva = st.text_input("🏢 Cerca per P.IVA", "", key="filtro_piva_admin")
+            
+            with col_f3:
+                solo_mancanti = st.checkbox("🚨 Solo senza P.IVA", value=False, key="filtro_mancanti")
+            
+            # Applica filtri
+            df_clienti_filtrato = df_clienti.copy()
+            
+            if cerca_email:
+                df_clienti_filtrato = df_clienti_filtrato[
+                    df_clienti_filtrato['email'].str.contains(cerca_email, case=False, na=False)
+                ]
+            
+            if cerca_piva and has_piva_column:
+                df_clienti_filtrato = df_clienti_filtrato[
+                    df_clienti_filtrato['partita_iva'].astype(str).str.contains(cerca_piva, case=False, na=False)
+                ]
+            
+            if solo_mancanti and has_piva_column:
+                df_clienti_filtrato = df_clienti_filtrato[
+                    df_clienti_filtrato['partita_iva'].isna() | (df_clienti_filtrato['partita_iva'] == '')
+                ]
+            
+            # Metriche P.IVA (solo se colonna esiste)
+            if has_piva_column:
+                col_s1, col_s2, col_s3 = st.columns(3)
+                with col_s1:
+                    st.metric("📊 Filtrati", len(df_clienti_filtrato))
+                with col_s2:
+                    con_piva = df_clienti['partita_iva'].notna().sum()
+                    st.metric("✅ Con P.IVA", con_piva)
+                with col_s3:
+                    senza_piva = df_clienti['partita_iva'].isna().sum()
+                    st.metric("⚠️ Senza P.IVA", senza_piva)
+            
+            st.markdown("---")
+            
             # Ordina per ultimo caricamento (più recenti prima)
-            df_clienti_sorted = df_clienti.sort_values('ultimo_caricamento', ascending=False, na_position='last')
+            df_clienti_sorted = df_clienti_filtrato.sort_values('ultimo_caricamento', ascending=False, na_position='last')
             
             # ===== TABELLA CLIENTI CON IMPERSONAZIONE =====
             # Layout dinamico: con/senza colonna P.IVA in base a migrazione

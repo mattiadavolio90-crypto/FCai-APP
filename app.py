@@ -4772,24 +4772,59 @@ if uploaded_files:
                             # ============================================================
                             # VALIDAZIONE P.IVA CESSIONARIO (Anti-abuso)
                             # ============================================================
-                            # Estrai P.IVA dal cessionario (destinatario fattura)
-                            piva_cessionario = items.get('piva_cessionario') if isinstance(items, dict) else None
-                            user_piva = st.session_state.get('partita_iva')
+                            # ⚠️ SKIP per admin e impersonazione (possono caricare qualsiasi fattura)
+                            is_admin = st.session_state.get('user_is_admin', False)
+                            is_impersonating = st.session_state.get('impersonating', False)
                             
-                            # Se utente ha P.IVA registrata E fattura ha P.IVA cessionario
-                            if user_piva and piva_cessionario:
-                                piva_cessionario_norm = normalizza_piva(piva_cessionario)
-                                user_piva_norm = normalizza_piva(user_piva)
+                            if not is_admin and not is_impersonating:
+                                # Estrai P.IVA dal cessionario (dalla prima riga - items è lista di dict)
+                                piva_cessionario = None
+                                if isinstance(items, list) and len(items) > 0:
+                                    piva_cessionario = items[0].get('piva_cessionario')
+                                elif isinstance(items, dict):
+                                    piva_cessionario = items.get('piva_cessionario')
                                 
-                                if piva_cessionario_norm != user_piva_norm:
-                                    raise ValueError(
-                                        f"P.IVA destinatario ({piva_cessionario}) non corrisponde "
-                                        f"al tuo account ({user_piva}). Contatta l'assistenza se hai più ristoranti."
+                                user_piva = st.session_state.get('partita_iva')
+                                
+                                logger.info(f"🔍 Validazione P.IVA - User: {user_piva}, Fattura: {piva_cessionario}")
+                                
+                                # 🚫 CASO 1: Cliente senza P.IVA → BLOCCO TOTALE
+                                if not user_piva:
+                                    logger.warning(
+                                        f"⚠️ UPLOAD BLOCCATO - User {st.session_state.get('user_data', {}).get('email')} "
+                                        f"non ha P.IVA registrata"
                                     )
+                                    raise ValueError(
+                                        f"🚫 P.IVA MANCANTE\n\n"
+                                        f"Il tuo account non ha una P.IVA registrata.\n"
+                                        f"Contatta l'assistenza per completare la registrazione.\n\n"
+                                        f"📧 supporto@envoicescan-ai.com"
+                                    )
+                                
+                                # CASO 2: Utente ha P.IVA E fattura ha P.IVA → VALIDAZIONE STRICT
+                                elif user_piva and piva_cessionario:
+                                    piva_cessionario_norm = normalizza_piva(piva_cessionario)
+                                    user_piva_norm = normalizza_piva(user_piva)
+                                    
+                                    if piva_cessionario_norm != user_piva_norm:
+                                        # 🚫 BLOCCO TOTALE
+                                        logger.warning(
+                                            f"⚠️ UPLOAD BLOCCATO - User {st.session_state.get('user_data', {}).get('email')} "
+                                            f"ha tentato upload con P.IVA {piva_cessionario} (sua: {user_piva})"
+                                        )
+                                        raise ValueError(
+                                            f"🚫 FATTURA NON VALIDA\n\n"
+                                            f"Questa fattura è intestata a P.IVA: {piva_cessionario}\n"
+                                            f"Il tuo account è registrato con P.IVA: {user_piva}\n\n"
+                                            f"Hai più locali? Contatta supporto@envoicescan-ai.com"
+                                        )
                             
-                            # Log per debug (solo admin)
-                            if st.session_state.get('user_is_admin', False):
-                                logger.debug(f"P.IVA check: user={user_piva}, fattura={piva_cessionario}")
+                            else:
+                                # Admin/Impersonazione: log per debug
+                                piva_cessionario = None
+                                if isinstance(items, list) and len(items) > 0:
+                                    piva_cessionario = items[0].get('piva_cessionario')
+                                logger.debug(f"Admin upload - P.IVA fattura: {piva_cessionario}")
                             
                         elif nome_file.endswith(('.pdf', '.jpg', '.jpeg', '.png')):
                             items = estrai_dati_da_scontrino_vision(file)
