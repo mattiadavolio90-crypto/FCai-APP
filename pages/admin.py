@@ -1027,7 +1027,7 @@ if tab1:
                                 <p style="color: #666; font-size: 14px;">
                                     ---<br>
                                     <strong>ANALISI FATTURE AI Team</strong><br>
-                                    <a href="https://app-fci.streamlit.app">app-fci.streamlit.app</a>
+                                    <a href="https://envoicescan-ai.streamlit.app">envoicescan-ai.streamlit.app</a>
                                 </p>
                             </div>
                             """
