@@ -2322,159 +2322,141 @@ def tab_memoria_globale_unificata():
         st.markdown("---")
     
     # ============================================================
-    # BARRA CONFERMA RIGHE VERIFICATE (sempre visibile se admin e campo exists)
+    # BARRA AZIONI UNIFICATA (Verifiche + Modifiche)
     # ============================================================
     # Ricalcola num_selezionate DOPO il ciclo (quando le checkbox hanno aggiornato lo stato)
     num_selezionate = len(st.session_state.righe_selezionate)
     
-    if is_admin and campo_verified_exists:
+    # ✅ PULSANTE UNICO: Gestisce entrambe le operazioni (verifiche checkbox + modifiche categorie)
+    if is_admin and campo_verified_exists and (num_selezionate > 0 or num_modifiche > 0):
         st.markdown("---")
-        st.markdown("### ✅ Conferma Verifiche")
+        st.markdown("### 💾 Salvataggio e Conferma")
         
+        # Info riassuntiva
+        info_parts = []
+        if num_modifiche > 0:
+            totale_righe_affected = sum(m['occorrenze'] for m in st.session_state.modifiche_memoria.values())
+            info_parts.append(f"**{num_modifiche}** modifiche categorie → **{totale_righe_affected}** righe")
         if num_selezionate > 0:
-            st.info(f"📊 **{num_selezionate}** righe selezionate per conferma")
-        else:
-            st.info("📊 **0** righe selezionate - Seleziona righe da verificare")
+            info_parts.append(f"**{num_selezionate}** verifiche checkbox")
         
-        col_conferma, col_deselect = st.columns([2, 1])
+        st.info(f"📊 Azioni pendenti: " + " | ".join(info_parts))
         
-        with col_conferma:
-            if st.button(
-                f"✅ Conferma {num_selezionate} righe verificate" if num_selezionate > 0 else "✅ Nessuna riga selezionata",
-                type="primary", 
-                use_container_width=True, 
-                key="conferma_righe",
-                disabled=(num_selezionate == 0)
-            ):
-                with st.spinner(f"✅ Conferma {num_selezionate} righe in corso..."):
-                    try:
-                        # Aggiorna tutte le righe selezionate impostando verified = True
-                        righe_ids = list(st.session_state.righe_selezionate)
-                        
-                        # Batch update (Supabase supporta .in_() per multipli ID)
-                        supabase.table('prodotti_master')\
-                            .update({'verified': True})\
-                            .in_('id', righe_ids)\
-                            .execute()
-                        
-                        # Reset selezione
-                        st.session_state.righe_selezionate = set()
-                        st.cache_data.clear()
-                        
-                        st.success(f"✅ {num_selezionate} righe confermate!")
-                        time.sleep(1)
-                        st.rerun()
-                        
-                    except Exception as e:
-                        logger.error(f"Errore conferma righe: {e}")
-                        st.error(f"❌ Errore durante la conferma: {e}")
+        # Preview modifiche (se esistono)
+        if num_modifiche > 0:
+            with st.expander("🔍 Preview Modifiche Categorie", expanded=False):
+                for desc, info in list(st.session_state.modifiche_memoria.items())[:10]:
+                    desc_short = desc[:50] + "..." if len(desc) > 50 else desc
+                    st.markdown(f"- `{desc_short}` ({info['occorrenze']}×): {info['categoria_originale']} → **{info['nuova_categoria']}**")
+                if num_modifiche > 10:
+                    st.caption(f"... e altre {num_modifiche - 10} modifiche")
         
-        with col_deselect:
-            if st.button(
-                "❌ Deseleziona Tutte", 
-                use_container_width=True, 
-                key="deselect_righe",
-                disabled=(num_selezionate == 0)
-            ):
-                st.session_state.righe_selezionate = set()
-                st.rerun()
-    
-    # ============================================================
-    # BARRA AZIONI BATCH (se ci sono modifiche)
-    # ============================================================
-    if num_modifiche > 0:
-        st.markdown("---")
-        st.markdown("### 💾 Salvataggio Batch")
-        
-        # Info modifiche
-        totale_righe_affected = sum(m['occorrenze'] for m in st.session_state.modifiche_memoria.values())
-        st.info(f"📊 **{num_modifiche}** descrizioni modificate → **{totale_righe_affected}** righe totali")
-        
-        # Mostra preview modifiche
-        with st.expander("🔍 Preview Modifiche", expanded=False):
-            for desc, info in list(st.session_state.modifiche_memoria.items())[:10]:
-                desc_short = desc[:50] + "..." if len(desc) > 50 else desc
-                st.markdown(f"- `{desc_short}` ({info['occorrenze']}×): {info['categoria_originale']} → **{info['nuova_categoria']}**")
-            if num_modifiche > 10:
-                st.caption(f"... e altre {num_modifiche - 10} modifiche")
-        
-        # Bottoni azione - TAB 4 MEMORIA
+        # Bottoni azione unificati
         col_save, col_cancel, col_export = st.columns([2, 1, 1.5])
         
         with col_save:
-            if st.button(f"💾 Salva Tutte ({num_modifiche})", type="primary", use_container_width=True, key="save_memoria_batch"):
-                with st.spinner(f"💾 Salvataggio {num_modifiche} modifiche in corso..."):
-                    success_count = 0
-                    total_rows = 0
+            # Label dinamica
+            label_parts = []
+            if num_modifiche > 0:
+                label_parts.append(f"{num_modifiche} modifiche")
+            if num_selezionate > 0:
+                label_parts.append(f"{num_selezionate} verifiche")
+            
+            button_label = f"💾 Salva e Conferma ({' + '.join(label_parts)})"
+            
+            if st.button(button_label, type="primary", use_container_width=True, key="save_unified"):
+                with st.spinner("💾 Salvataggio in corso..."):
+                    success_messages = []
                     
-                    for descrizione, info in st.session_state.modifiche_memoria.items():
-                        try:
-                            # AGGIORNA TUTTE LE RIGHE CON STESSA DESCRIZIONE
-                            if is_admin:
-                                # Admin: aggiorna memoria globale + marca come verificata (correzione manuale)
-                                supabase.table('prodotti_master')\
-                                    .update({
-                                        'categoria': info['nuova_categoria'],
-                                        'verified': True  # ✅ Auto-verifica: correzione manuale = già controllata
-                                    })\
-                                    .eq('descrizione', descrizione)\
-                                    .execute()
-                                
-                                # Aggiorna anche fatture
-                                result = supabase.table('fatture')\
-                                    .update({'categoria': info['nuova_categoria']})\
-                                    .eq('descrizione', descrizione)\
-                                    .execute()
-                            else:
-                                # Cliente: aggiorna solo sue fatture
-                                user_id = user.get('id')
-                                result = supabase.table('fatture')\
-                                    .update({'categoria': info['nuova_categoria']})\
-                                    .eq('descrizione', descrizione)\
-                                    .eq('user_id', user_id)\
-                                    .execute()
+                    try:
+                        # STEP 1: Salva modifiche categorie (se esistono)
+                        if num_modifiche > 0:
+                            success_count = 0
+                            total_rows = 0
                             
-                            num_updated = len(result.data) if result.data else info['occorrenze']
-                            success_count += 1
-                            total_rows += num_updated
+                            for descrizione, info in st.session_state.modifiche_memoria.items():
+                                try:
+                                    # Admin: aggiorna memoria globale + auto-verifica
+                                    supabase.table('prodotti_master')\
+                                        .update({
+                                            'categoria': info['nuova_categoria'],
+                                            'verified': True  # ✅ Auto-verifica: correzione manuale = già controllata
+                                        })\
+                                        .eq('descrizione', descrizione)\
+                                        .execute()
+                                    
+                                    # Aggiorna anche fatture
+                                    result = supabase.table('fatture')\
+                                        .update({'categoria': info['nuova_categoria']})\
+                                        .eq('descrizione', descrizione)\
+                                        .execute()
+                                    
+                                    num_updated = len(result.data) if result.data else info['occorrenze']
+                                    success_count += 1
+                                    total_rows += num_updated
+                                    
+                                except Exception as e:
+                                    logger.error(f"Errore salvataggio '{descrizione}': {e}")
                             
-                        except Exception as e:
-                            logger.error(f"Errore salvataggio '{descrizione}': {e}")
-                    
-                    # Reset modifiche
-                    st.session_state.modifiche_memoria = {}
-                    st.cache_data.clear()
-                    
-                    st.success(f"✅ {success_count} modifiche salvate! {total_rows} righe aggiornate.")
-                    time.sleep(1.5)
-                    st.rerun()
+                            success_messages.append(f"✅ {success_count} modifiche salvate ({total_rows} righe aggiornate)")
+                            
+                            # Reset modifiche
+                            st.session_state.modifiche_memoria = {}
+                        
+                        # STEP 2: Conferma verifiche checkbox (se esistono)
+                        if num_selezionate > 0:
+                            righe_ids = list(st.session_state.righe_selezionate)
+                            
+                            supabase.table('prodotti_master')\
+                                .update({'verified': True})\
+                                .in_('id', righe_ids)\
+                                .execute()
+                            
+                            success_messages.append(f"✅ {num_selezionate} verifiche confermate")
+                            
+                            # Reset selezione
+                            st.session_state.righe_selezionate = set()
+                        
+                        # Refresh cache
+                        st.cache_data.clear()
+                        
+                        # Mostra success unificato
+                        st.success("\n\n".join(success_messages))
+                        time.sleep(1.5)
+                        st.rerun()
+                        
+                    except Exception as e:
+                        logger.error(f"Errore salvataggio unificato: {e}")
+                        st.error(f"❌ Errore durante il salvataggio: {e}")
         
         with col_cancel:
-            if st.button("❌ Annulla Tutte", use_container_width=True, key="cancel_memoria_batch"):
+            if st.button("❌ Annulla Tutte", use_container_width=True, key="cancel_unified"):
                 st.session_state.modifiche_memoria = {}
+                st.session_state.righe_selezionate = set()
                 st.rerun()
         
         with col_export:
-            # Prepara CSV modifiche
-            export_data = []
-            for desc, info in st.session_state.modifiche_memoria.items():
-                export_data.append({
-                    'Descrizione': desc,
-                    'Occorrenze': info['occorrenze'],
-                    'Categoria Originale': info['categoria_originale'],
-                    'Nuova Categoria': info['nuova_categoria']
-                })
-            df_export = pd.DataFrame(export_data)
-            csv = df_export.to_csv(index=False).encode('utf-8')
-            
-            st.download_button(
-                label="📄 Export CSV",
-                data=csv,
-                file_name=f"modifiche_memoria_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv",
-                use_container_width=True,
-                key="export_memoria_csv"
-            )
+            # Export solo se ci sono modifiche
+            if num_modifiche > 0:
+                export_data = []
+                for desc, info in st.session_state.modifiche_memoria.items():
+                    export_data.append({
+                        'Descrizione': desc,
+                        'Occorrenze': info['occorrenze'],
+                        'Categoria Originale': info['categoria_originale'],
+                        'Nuova Categoria': info['nuova_categoria']
+                    })
+                df_export = pd.DataFrame(export_data)
+                csv = df_export.to_csv(index=False).encode('utf-8')
+                
+                st.download_button(
+                    label="📄 Export CSV",
+                    data=csv,
+                    file_name=f"modifiche_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="export_unified_csv"
+                )
 
 # Chiama la funzione unificata
 if tab3:
