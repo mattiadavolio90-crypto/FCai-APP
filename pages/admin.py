@@ -1114,10 +1114,16 @@ if tab1:
         if not query_users.data:
             st.info("📭 Nessun cliente registrato")
         else:
+            # Filtra admin dalla lista clienti
+            clienti_non_admin = [u for u in query_users.data if u.get('email') not in ADMIN_EMAILS]
+            
+            if not clienti_non_admin:
+                st.info("📭 Nessun cliente registrato (esclusi admin)")
+            
             # Calcola statistiche per ogni cliente
             stats_clienti = []
             
-            for user_data in query_users.data:
+            for user_data in clienti_non_admin:
                 user_id = user_data['id']
                 
                 # Query fatture per questo utente (con conteggio esatto)
@@ -1513,6 +1519,16 @@ if tab1:
                             if st.session_state.get(f"show_delete_dialog_{row['user_id']}", False):
                                 @st.dialog("⚠️ Conferma Eliminazione Account")
                                 def show_delete_confirmation():
+                                    # CONTROLLO SICUREZZA: Impedisci eliminazione dell'admin
+                                    admin_email = st.session_state.user_data.get('email')
+                                    if row['email'] == admin_email or row['email'] in ADMIN_EMAILS:
+                                        st.error("🚫 **ERRORE**: Non puoi eliminare il tuo account admin o altri account admin!")
+                                        st.info("Se vuoi rimuovere un amministratore, contatta il supporto tecnico.")
+                                        if st.button("❌ Chiudi", use_container_width=True):
+                                            st.session_state[f"show_delete_dialog_{row['user_id']}"] = False
+                                            st.rerun()
+                                        return
+                                    
                                     st.warning(
                                         f"**Stai per eliminare definitivamente:**\n\n"
                                         f"👤 **{row['email']}** ({row['ristorante']})\n\n"
@@ -1605,11 +1621,25 @@ if tab1:
                                                         except Exception as e:
                                                             logger.warning(f"Errore eliminazione memoria globale: {e}")
                                                     
-                                                    # 5. Elimina utente
-                                                    supabase.table('users')\
+                                                    # 5. Elimina utente (con doppia verifica sicurezza)
+                                                    # Verifica che user_id non sia None/vuoto
+                                                    if not user_id_to_delete:
+                                                        raise ValueError("user_id_to_delete è vuoto!")
+                                                    
+                                                    # Verifica che non sia l'admin
+                                                    if email_deleted in ADMIN_EMAILS:
+                                                        raise ValueError(f"Tentativo di eliminare admin: {email_deleted}")
+                                                    
+                                                    logger.warning(f"🗑️ Eliminazione utente: {email_deleted} (ID: {user_id_to_delete})")
+                                                    
+                                                    result_user = supabase.table('users')\
                                                         .delete()\
                                                         .eq('id', user_id_to_delete)\
                                                         .execute()
+                                                    
+                                                    # Verifica che l'eliminazione abbia funzionato
+                                                    if not result_user.data:
+                                                        logger.error(f"⚠️ Eliminazione utente fallita per ID: {user_id_to_delete}")
                                                     
                                                     # 6. Invalida cache
                                                     try:
