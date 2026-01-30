@@ -9,6 +9,7 @@ from supabase import create_client, Client
 from argon2 import PasswordHasher
 import logging
 import time
+import hashlib
 
 # ============================================================
 # CONFIGURAZIONE
@@ -100,16 +101,27 @@ with st.form("form_cambio_password"):
                 st.warning("⚠️ La nuova password deve essere diversa da quella attuale!")
             else:
                 try:
-                    # Verifica password attuale
-                    stored_hash = user.get('password_hash', '')
+                    # Verifica password attuale (supporta sia Argon2 che SHA256 legacy)
+                    stored_hash = user.get('password_hash', '').strip()
+                    password_corretta = False
                     
-                    try:
-                        ph.verify(stored_hash, vecchia_password)
-                    except Exception:
+                    # Prova prima con Argon2 (formato moderno)
+                    if stored_hash.startswith('$argon2'):
+                        try:
+                            ph.verify(stored_hash, vecchia_password)
+                            password_corretta = True
+                        except Exception:
+                            password_corretta = False
+                    else:
+                        # Fallback SHA256 legacy
+                        sha_hash = hashlib.sha256(vecchia_password.encode()).hexdigest()
+                        password_corretta = (sha_hash == stored_hash)
+                    
+                    if not password_corretta:
                         st.error("❌ Password attuale errata!")
                         st.stop()
                     
-                    # Crea nuovo hash
+                    # Crea nuovo hash con Argon2 (formato moderno)
                     nuovo_hash = ph.hash(nuova_password)
                     
                     # Aggiorna nel database
